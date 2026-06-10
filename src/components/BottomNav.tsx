@@ -1,0 +1,47 @@
+import { Link, useRouterState } from "@tanstack/react-router";
+import { LayoutDashboard, UtensilsCrossed, ShoppingCart, Warehouse, Settings } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { AppRole } from "@/hooks/useAuth";
+
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: AppRole[];
+}
+
+const items: NavItem[] = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"] },
+  { to: "/menu", label: "Menu", icon: UtensilsCrossed, roles: ["admin"] },
+  { to: "/transaction", label: "Kasir", icon: ShoppingCart, roles: ["admin", "cashier"] },
+  { to: "/warehouse", label: "Gudang", icon: Warehouse, roles: ["admin"] },
+  { to: "/settings", label: "Setelan", icon: Settings, roles: ["admin"] },
+];
+
+export function BottomNav({ role }: { role: AppRole }) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const visible = items.filter((i) => i.roles.includes(role));
+  return (
+    <nav className="fixed bottom-0 inset-x-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto max-w-5xl grid" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0,1fr))` }}>
+        {visible.map((item) => {
+          const active = pathname.startsWith(item.to);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors",
+                active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className={cn("h-5 w-5", active && "scale-110")} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
