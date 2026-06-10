@@ -1,0 +1,296 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { rupiah } from "@/lib/format";
+import { toast } from "sonner";
+import { Plus, Minus, Trash2, ShoppingCart, Printer, Share2, X, Drumstick, Banknote, QrCode } from "lucide-react";
+import { Receipt } from "@/components/Receipt";
+
+export const Route = createFileRoute("/_authenticated/transaction")({
+  ssr: false,
+  component: TransactionPage,
+});
+
+type Product = { id: string; name: string; price: number; stock: number };
+type CartItem = { product: Product; qty: number };
+
+function TransactionPage() {
+  const qc = useQueryClient();
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data } = await supabase.from("products").select("*").order("name");
+      return (data ?? []) as Product[];
+    },
+  });
+  const { data: settings } = useQuery({
+    queryKey: ["printer_settings"],
+    queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
+  });
+
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [payMethod, setPayMethod] = useState<"cash" | "qris">("cash");
+  const [cashReceived, setCashReceived] = useState("");
+  const [lastTx, setLastTx] = useState<any>(null);
+
+  const total = useMemo(() => cart.reduce((s, i) => s + Number(i.product.price) * i.qty, 0), [cart]);
+  const cartCount = useMemo(() => cart.reduce((s, i) => s + i.qty, 0), [cart]);
+  const change = Math.max(0, Number(cashReceived || 0) - total);
+
+  const addToCart = (p: Product) => {
+    if (p.stock <= 0) return;
+    setCart((c) => {
+      const ex = c.find((i) => i.product.id === p.id);
+      if (ex) {
+        if (ex.qty >= p.stock) { toast.warning("Stok tidak cukup"); return c; }
+        return c.map((i) => i.product.id === p.id ? { ...i, qty: i.qty + 1 } : i);
+      }
+      return [...c, { product: p, qty: 1 }];
+    });
+  };
+  const changeQty = (id: string, d: number) => {
+    setCart((c) => c.flatMap((i) => {
+      if (i.product.id !== id) return [i];
+      const q = i.qty + d;
+      if (q <= 0) return [];
+      if (q > i.product.stock) { toast.warning("Stok tidak cukup"); return [i]; }
+      return [{ ...i, qty: q }];
+    }));
+  };
+  const removeItem = (id: string) => setCart((c) => c.filter((i) => i.product.id !== id));
+
+  const checkout = useMutation({
+    mutationFn: async () => {
+      if (cart.length === 0) throw new Error("Keranjang kosong");
+      if (payMethod === "cash" && Number(cashReceived) < total) throw new Error("Uang tunai kurang");
+      const { data: u } = await supabase.auth.getUser();
+      const { data: tx, error } = await supabase.from("transactions").insert({
+        total,
+        payment_method: payMethod,
+        cash_received: payMethod === "cash" ? Number(cashReceived) : null,
+        change_amount: payMethod === "cash" ? change : null,
+        cashier_id: u.user?.id,
+      }).select().single();
+      if (error) throw error;
+
+      const items = cart.map((i) => ({
+        transaction_id: tx.id,
+        product_id: i.product.id,
+        product_name: i.product.name,
+        price: Number(i.product.price),
+        quantity: i.qty,
+        subtotal: Number(i.product.price) * i.qty,
+      }));
+      const { error: e2 } = await supabase.from("transaction_items").insert(items);
+      if (e2) throw e2;
+
+      // decrement stock
+      for (const i of cart) {
+        await supabase.from("products")
+          .update({ stock: i.product.stock - i.qty })
+          .eq("id", i.product.id);
+      }
+      return { tx, items };
+    },
+    onSuccess: ({ tx, items }) => {
+      setLastTx({ ...tx, items });
+      setCheckoutOpen(false);
+      setCartOpen(false);
+      setReceiptOpen(true);
+      setCart([]);
+      setCashReceived("");
+      qc.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {products.map((p) => {
+          const out = p.stock <= 0;
+          return (
+            <button
+              key={p.id}
+              onClick={() => addToCart(p)}
+              disabled={out}
+              className={[
+                "group relative text-left rounded-2xl border bg-card p-3 transition-all",
+                out ? "opacity-50 cursor-not-allowed" : "hover:border-primary hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98]",
+              ].join(" ")}
+            >
+              <div className="aspect-square rounded-xl bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center mb-2">
+                <Drumstick className="h-10 w-10 text-primary/70" />
+              </div>
+              <div className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">{p.name}</div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
+                {out ? (
+                  <Badge variant="destructive" className="text-[10px]">Habis</Badge>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">Stok {p.stock}</span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+        {products.length === 0 && (
+          <div className="col-span-full text-center text-muted-foreground py-10">Belum ada produk.</div>
+        )}
+      </div>
+
+      {/* Floating cart */}
+      {cartCount > 0 && (
+        <button
+          onClick={() => setCartOpen(true)}
+          className="fixed bottom-24 right-4 z-30 h-14 px-5 rounded-full bg-primary text-primary-foreground shadow-xl flex items-center gap-3 hover:scale-105 transition"
+        >
+          <ShoppingCart className="h-5 w-5" />
+          <span className="font-semibold">{cartCount} item · {rupiah(total)}</span>
+        </button>
+      )}
+
+      {/* Cart drawer */}
+      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Keranjang</DialogTitle></DialogHeader>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {cart.map((i) => (
+              <div key={i.product.id} className="flex items-center gap-2 p-2 rounded-lg border">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{i.product.name}</div>
+                  <div className="text-xs text-muted-foreground">{rupiah(i.product.price)} × {i.qty}</div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => changeQty(i.product.id, -1)}><Minus className="h-3 w-3" /></Button>
+                  <span className="w-6 text-center text-sm">{i.qty}</span>
+                  <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => changeQty(i.product.id, 1)}><Plus className="h-3 w-3" /></Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeItem(i.product.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between border-t pt-3">
+            <span className="font-semibold">Total</span>
+            <span className="text-xl font-bold text-primary">{rupiah(total)}</span>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCart([])}><X className="h-4 w-4 mr-1" />Kosongkan</Button>
+            <Button onClick={() => { setCheckoutOpen(true); }} disabled={cart.length === 0}>Checkout</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Checkout */}
+      <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Pembayaran</DialogTitle></DialogHeader>
+          <div className="text-center py-3">
+            <div className="text-xs text-muted-foreground">Total Tagihan</div>
+            <div className="text-3xl font-bold text-primary">{rupiah(total)}</div>
+          </div>
+          <Tabs value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
+            <TabsList className="grid grid-cols-2">
+              <TabsTrigger value="cash"><Banknote className="h-4 w-4 mr-2" />Cash</TabsTrigger>
+              <TabsTrigger value="qris"><QrCode className="h-4 w-4 mr-2" />QRIS</TabsTrigger>
+            </TabsList>
+            <TabsContent value="cash" className="space-y-3 pt-3">
+              <div>
+                <label className="text-sm font-medium">Uang Diterima</label>
+                <Input type="number" min="0" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="text-lg font-semibold" />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {[total, 50000, 100000, 200000].map((q, i) => (
+                    <button key={i} type="button" onClick={() => setCashReceived(String(q))}
+                      className="px-3 py-1.5 rounded-md border text-xs hover:bg-accent">
+                      {rupiah(q)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-success/10 border border-success/30">
+                <span className="font-medium">Kembalian</span>
+                <span className="text-xl font-bold text-success">{rupiah(change)}</span>
+              </div>
+            </TabsContent>
+            <TabsContent value="qris" className="pt-3">
+              <div className="aspect-square max-w-[220px] mx-auto rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/30 grid place-items-center border-2 border-dashed">
+                <div className="text-center">
+                  <QrCode className="h-20 w-20 text-primary mx-auto" />
+                  <div className="text-xs mt-2 text-muted-foreground">Scan untuk membayar</div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCheckoutOpen(false)}>Batal</Button>
+            <Button onClick={() => checkout.mutate()} disabled={checkout.isPending}>Bayar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt */}
+      <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Struk Pembayaran</DialogTitle></DialogHeader>
+          {lastTx && <Receipt tx={lastTx} settings={settings} />}
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => printReceipt()}>
+              <Printer className="h-4 w-4 mr-2" />Cetak
+            </Button>
+            <Button className="flex-1 bg-success text-success-foreground hover:bg-success/90"
+              onClick={() => shareWA(lastTx, settings)}>
+              <Share2 className="h-4 w-4 mr-2" />WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function printReceipt() {
+  const node = document.getElementById("receipt-print");
+  if (!node) return;
+  const w = window.open("", "_blank", "width=300,height=600");
+  if (!w) return;
+  w.document.write(`<html><head><title>Struk</title>
+    <style>body{font-family:monospace;font-size:12px;padding:8px;width:280px}
+    .center{text-align:center}.row{display:flex;justify-content:space-between}
+    hr{border:none;border-top:1px dashed #000;margin:6px 0}</style>
+    </head><body>${node.innerHTML}</body></html>`);
+  w.document.close();
+  setTimeout(() => { w.print(); w.close(); }, 250);
+}
+
+function shareWA(tx: any, settings: any) {
+  const lines: string[] = [];
+  lines.push(`*${settings?.shop_name ?? "AMI Fried Chicken"}*`);
+  lines.push(`Struk: ${tx.id.slice(0, 8).toUpperCase()}`);
+  lines.push(`${new Date(tx.created_at).toLocaleString("id-ID")}`);
+  lines.push("--------------------");
+  tx.items.forEach((i: any) => {
+    lines.push(`${i.product_name}`);
+    lines.push(`  ${i.quantity} x ${rupiah(i.price)} = ${rupiah(i.subtotal)}`);
+  });
+  lines.push("--------------------");
+  lines.push(`*Total: ${rupiah(tx.total)}*`);
+  lines.push(`Bayar: ${tx.payment_method.toUpperCase()}`);
+  if (tx.payment_method === "cash") {
+    lines.push(`Tunai: ${rupiah(tx.cash_received)}`);
+    lines.push(`Kembali: ${rupiah(tx.change_amount)}`);
+  }
+  lines.push("\nTerima kasih 🙏");
+  const msg = encodeURIComponent(lines.join("\n"));
+  const phone = settings?.whatsapp_number ? settings.whatsapp_number.replace(/\D/g, "") : "";
+  window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
+}
