@@ -77,14 +77,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "AMI Fried Chicken - POS Kasir" },
+      { name: "description", content: "Sistem kasir untuk AMI Fried Chicken: kelola menu, transaksi, stok, dan laporan penjualan." },
+      { property: "og:title", content: "AMI Fried Chicken - POS Kasir" },
+      { property: "og:description", content: "Aplikasi kasir ayam krispi yang cepat, modern, dan mudah digunakan." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
