@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      events: {
+        Row: {
+          adjustment_type: string
+          adjustment_value: number
+          created_at: string
+          event_date: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          adjustment_type: string
+          adjustment_value?: number
+          created_at?: string
+          event_date: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          adjustment_type?: string
+          adjustment_value?: number
+          created_at?: string
+          event_date?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       printer_settings: {
         Row: {
           id: number

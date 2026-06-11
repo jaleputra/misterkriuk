@@ -22,7 +22,8 @@ type CartItem = { product: Product; qty: number };
 
 function TransactionPage() {
   const qc = useQueryClient();
-  const { data: products = [] } = useQuery({
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: rawProducts = [] } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
       const { data } = await supabase.from("products").select("*").order("name");
@@ -33,6 +34,25 @@ function TransactionPage() {
     queryKey: ["printer_settings"],
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
+  const { data: activeEvent } = useQuery({
+    queryKey: ["events_today", today],
+    queryFn: async () => (await supabase.from("events").select("*").eq("event_date", today).order("created_at", { ascending: false }).limit(1).maybeSingle()).data,
+  });
+
+  const applyEvent = (price: number) => {
+    if (!activeEvent) return price;
+    const v = Number(activeEvent.adjustment_value);
+    if (activeEvent.adjustment_type === "percent_discount") return Math.max(0, Math.round(price * (1 - v / 100)));
+    if (activeEvent.adjustment_type === "fixed_discount") return Math.max(0, price - v);
+    if (activeEvent.adjustment_type === "set_price") return Math.max(0, v);
+    return price;
+  };
+
+  const products = useMemo(
+    () => rawProducts.map((p) => ({ ...p, originalPrice: Number(p.price), price: applyEvent(Number(p.price)) })),
+    [rawProducts, activeEvent],
+  );
+
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -113,6 +133,17 @@ function TransactionPage() {
   });
 
   const ProductGrid = (
+    <>
+      {activeEvent && (
+        <div className="mb-3 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-primary flex items-center gap-2">
+          🎉 Event aktif: <span className="font-bold">{activeEvent.name}</span>
+          <span className="text-xs opacity-80">
+            ({activeEvent.adjustment_type === "percent_discount" ? `Diskon ${activeEvent.adjustment_value}%`
+              : activeEvent.adjustment_type === "fixed_discount" ? `Potongan ${rupiah(activeEvent.adjustment_value)}`
+              : `Harga ${rupiah(activeEvent.adjustment_value)}`})
+          </span>
+        </div>
+      )}
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       {products.map((p) => {
         const out = p.stock <= 0;
@@ -135,7 +166,12 @@ function TransactionPage() {
             </div>
             <div className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">{p.name}</div>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
+              <div className="flex flex-col leading-tight">
+                <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
+                {activeEvent && p.originalPrice !== p.price && (
+                  <span className="text-[10px] text-muted-foreground line-through">{rupiah(p.originalPrice)}</span>
+                )}
+              </div>
               {out ? (
                 <Badge variant="destructive" className="text-[10px]">Habis</Badge>
               ) : (
@@ -149,6 +185,7 @@ function TransactionPage() {
         <div className="col-span-full text-center text-muted-foreground py-10">Belum ada produk.</div>
       )}
     </div>
+    </>
   );
 
   const CartPanel = (
@@ -208,8 +245,8 @@ function TransactionPage() {
     <>
       {/* Desktop / tablet: split layout */}
       <div className="md:grid md:grid-cols-[1fr_360px] lg:grid-cols-[1fr_400px] md:gap-4">
-        <div>{ProductGrid}</div>
-        <aside className="hidden md:block sticky top-20 self-start h-[calc(100vh-7rem)] rounded-2xl border bg-card/50 p-3">
+        <div className="pb-4">{ProductGrid}</div>
+        <aside className="hidden md:flex md:flex-col sticky top-20 self-start h-[calc(100dvh-11rem)] rounded-2xl border bg-card/50 p-3">
           {CartPanel}
         </aside>
       </div>
