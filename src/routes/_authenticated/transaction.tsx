@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +17,7 @@ export const Route = createFileRoute("/_authenticated/transaction")({
   component: TransactionPage,
 });
 
-type Product = { id: string; name: string; price: number; stock: number };
+type Product = { id: string; name: string; price: number; stock: number; image_url?: string | null };
 type CartItem = { product: Product; qty: number };
 
 function TransactionPage() {
@@ -94,7 +93,6 @@ function TransactionPage() {
       const { error: e2 } = await supabase.from("transaction_items").insert(items);
       if (e2) throw e2;
 
-      // decrement stock
       for (const i of cart) {
         await supabase.from("products")
           .update({ stock: i.product.stock - i.qty })
@@ -114,80 +112,124 @@ function TransactionPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {products.map((p) => {
-          const out = p.stock <= 0;
-          return (
-            <button
-              key={p.id}
-              onClick={() => addToCart(p)}
-              disabled={out}
-              className={[
-                "group relative text-left rounded-2xl border bg-card p-3 transition-all",
-                out ? "opacity-50 cursor-not-allowed" : "hover:border-primary hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98]",
-              ].join(" ")}
-            >
-              <div className="aspect-square rounded-xl bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center mb-2">
+  const ProductGrid = (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      {products.map((p) => {
+        const out = p.stock <= 0;
+        return (
+          <button
+            key={p.id}
+            onClick={() => addToCart(p)}
+            disabled={out}
+            className={[
+              "group relative text-left rounded-2xl border bg-card p-3 transition-all",
+              out ? "opacity-50 cursor-not-allowed" : "hover:border-primary hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98]",
+            ].join(" ")}
+          >
+            <div className="aspect-square rounded-xl bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center mb-2 overflow-hidden">
+              {p.image_url ? (
+                <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
+              ) : (
                 <Drumstick className="h-10 w-10 text-primary/70" />
-              </div>
-              <div className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">{p.name}</div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
-                {out ? (
-                  <Badge variant="destructive" className="text-[10px]">Habis</Badge>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">Stok {p.stock}</span>
-                )}
-              </div>
-            </button>
-          );
-        })}
-        {products.length === 0 && (
-          <div className="col-span-full text-center text-muted-foreground py-10">Belum ada produk.</div>
+              )}
+            </div>
+            <div className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">{p.name}</div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
+              {out ? (
+                <Badge variant="destructive" className="text-[10px]">Habis</Badge>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">Stok {p.stock}</span>
+              )}
+            </div>
+          </button>
+        );
+      })}
+      {products.length === 0 && (
+        <div className="col-span-full text-center text-muted-foreground py-10">Belum ada produk.</div>
+      )}
+    </div>
+  );
+
+  const CartPanel = (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-1 pb-2">
+        <h2 className="font-bold text-base flex items-center gap-2">
+          <ShoppingCart className="h-4 w-4" />Keranjang
+          {cartCount > 0 && <Badge variant="secondary">{cartCount}</Badge>}
+        </h2>
+        {cart.length > 0 && (
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setCart([])}>
+            <X className="h-3 w-3 mr-1" />Kosongkan
+          </Button>
         )}
       </div>
+      <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[100px]">
+        {cart.length === 0 && (
+          <div className="text-center text-sm text-muted-foreground py-10">
+            Pilih produk untuk mulai
+          </div>
+        )}
+        {cart.map((i) => (
+          <div key={i.product.id} className="flex items-center gap-2 p-2 rounded-lg border bg-card">
+            <div className="h-10 w-10 rounded-md overflow-hidden bg-muted shrink-0 grid place-items-center">
+              {i.product.image_url ? (
+                <img src={i.product.image_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <Drumstick className="h-4 w-4 text-muted-foreground" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm truncate">{i.product.name}</div>
+              <div className="text-xs text-muted-foreground">{rupiah(i.product.price * i.qty)}</div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => changeQty(i.product.id, -1)}><Minus className="h-3 w-3" /></Button>
+              <span className="w-6 text-center text-sm font-semibold">{i.qty}</span>
+              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => changeQty(i.product.id, 1)}><Plus className="h-3 w-3" /></Button>
+              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeItem(i.product.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="border-t pt-3 mt-2 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="font-semibold">Total</span>
+          <span className="text-2xl font-bold text-primary">{rupiah(total)}</span>
+        </div>
+        <Button className="w-full h-12 text-base" disabled={cart.length === 0} onClick={() => setCheckoutOpen(true)}>
+          Checkout
+        </Button>
+      </div>
+    </div>
+  );
 
-      {/* Floating cart */}
+  return (
+    <>
+      {/* Desktop / tablet: split layout */}
+      <div className="md:grid md:grid-cols-[1fr_360px] lg:grid-cols-[1fr_400px] md:gap-4">
+        <div>{ProductGrid}</div>
+        <aside className="hidden md:block sticky top-20 self-start h-[calc(100vh-7rem)] rounded-2xl border bg-card/50 p-3">
+          {CartPanel}
+        </aside>
+      </div>
+
+      {/* Mobile floating cart */}
       {cartCount > 0 && (
         <button
           onClick={() => setCartOpen(true)}
-          className="fixed bottom-24 right-4 z-30 h-14 px-5 rounded-full bg-primary text-primary-foreground shadow-xl flex items-center gap-3 hover:scale-105 transition"
+          className="md:hidden fixed bottom-24 right-4 z-30 h-14 px-5 rounded-full bg-primary text-primary-foreground shadow-xl flex items-center gap-3 hover:scale-105 transition"
         >
           <ShoppingCart className="h-5 w-5" />
           <span className="font-semibold">{cartCount} item · {rupiah(total)}</span>
         </button>
       )}
 
-      {/* Cart drawer */}
+      {/* Mobile cart drawer */}
       <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md md:hidden">
           <DialogHeader><DialogTitle>Keranjang</DialogTitle></DialogHeader>
-          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
-            {cart.map((i) => (
-              <div key={i.product.id} className="flex items-center gap-2 p-2 rounded-lg border">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">{i.product.name}</div>
-                  <div className="text-xs text-muted-foreground">{rupiah(i.product.price)} × {i.qty}</div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => changeQty(i.product.id, -1)}><Minus className="h-3 w-3" /></Button>
-                  <span className="w-6 text-center text-sm">{i.qty}</span>
-                  <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => changeQty(i.product.id, 1)}><Plus className="h-3 w-3" /></Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeItem(i.product.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between border-t pt-3">
-            <span className="font-semibold">Total</span>
-            <span className="text-xl font-bold text-primary">{rupiah(total)}</span>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCart([])}><X className="h-4 w-4 mr-1" />Kosongkan</Button>
-            <Button onClick={() => { setCheckoutOpen(true); }} disabled={cart.length === 0}>Checkout</Button>
-          </DialogFooter>
+          <div className="h-[60vh]">{CartPanel}</div>
         </DialogContent>
       </Dialog>
 
@@ -254,7 +296,7 @@ function TransactionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
 
