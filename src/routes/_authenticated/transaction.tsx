@@ -22,7 +22,8 @@ type CartItem = { product: Product; qty: number };
 
 function TransactionPage() {
   const qc = useQueryClient();
-  const { data: products = [] } = useQuery({
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: rawProducts = [] } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
       const { data } = await supabase.from("products").select("*").order("name");
@@ -33,6 +34,25 @@ function TransactionPage() {
     queryKey: ["printer_settings"],
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
+  const { data: activeEvent } = useQuery({
+    queryKey: ["events_today", today],
+    queryFn: async () => (await supabase.from("events").select("*").eq("event_date", today).order("created_at", { ascending: false }).limit(1).maybeSingle()).data,
+  });
+
+  const applyEvent = (price: number) => {
+    if (!activeEvent) return price;
+    const v = Number(activeEvent.adjustment_value);
+    if (activeEvent.adjustment_type === "percent_discount") return Math.max(0, Math.round(price * (1 - v / 100)));
+    if (activeEvent.adjustment_type === "fixed_discount") return Math.max(0, price - v);
+    if (activeEvent.adjustment_type === "set_price") return Math.max(0, v);
+    return price;
+  };
+
+  const products = useMemo(
+    () => rawProducts.map((p) => ({ ...p, originalPrice: Number(p.price), price: applyEvent(Number(p.price)) })),
+    [rawProducts, activeEvent],
+  );
+
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
