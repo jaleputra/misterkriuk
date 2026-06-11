@@ -133,6 +133,17 @@ function TransactionPage() {
   });
 
   const ProductGrid = (
+    <>
+      {activeEvent && (
+        <div className="mb-3 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-primary flex items-center gap-2">
+          🎉 Event aktif: <span className="font-bold">{activeEvent.name}</span>
+          <span className="text-xs opacity-80">
+            ({activeEvent.adjustment_type === "percent_discount" ? `Diskon ${activeEvent.adjustment_value}%`
+              : activeEvent.adjustment_type === "fixed_discount" ? `Potongan ${rupiah(activeEvent.adjustment_value)}`
+              : `Harga ${rupiah(activeEvent.adjustment_value)}`})
+          </span>
+        </div>
+      )}
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       {products.map((p) => {
         const out = p.stock <= 0;
