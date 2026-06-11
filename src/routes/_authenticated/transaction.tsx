@@ -166,7 +166,12 @@ function TransactionPage() {
             </div>
             <div className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">{p.name}</div>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
+              <div className="flex flex-col leading-tight">
+                <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
+                {activeEvent && p.originalPrice !== p.price && (
+                  <span className="text-[10px] text-muted-foreground line-through">{rupiah(p.originalPrice)}</span>
+                )}
+              </div>
               {out ? (
                 <Badge variant="destructive" className="text-[10px]">Habis</Badge>
               ) : (
@@ -180,6 +185,7 @@ function TransactionPage() {
         <div className="col-span-full text-center text-muted-foreground py-10">Belum ada produk.</div>
       )}
     </div>
+    </>
   );
 
   const CartPanel = (
