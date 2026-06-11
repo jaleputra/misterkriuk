@@ -43,7 +43,7 @@ function AuthedLayout() {
   return (
     <div className="min-h-screen flex flex-col pb-20">
       <AppHeader title={title ? TITLES[title] : ""} role={role} email={user?.email ?? ""} />
-      <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-4">
+      <main className="flex-1 mx-auto max-w-[1400px] w-full px-3 sm:px-4 py-3 sm:py-4">
         <Outlet />
       </main>
       <BottomNav role={role} />
