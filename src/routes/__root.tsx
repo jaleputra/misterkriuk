@@ -80,9 +80,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "AMI Fried Chicken - POS Kasir" },
       { name: "description", content: "Sistem kasir untuk AMI Fried Chicken: kelola menu, transaksi, stok, dan laporan penjualan." },
       { property: "og:title", content: "AMI Fried Chicken - POS Kasir" },
-      { property: "og:description", content: "Aplikasi kasir ayam krispi yang cepat, modern, dan mudah digunakan." },
+      { property: "og:description", content: "Sistem kasir untuk AMI Fried Chicken: kelola menu, transaksi, stok, dan laporan penjualan." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "AMI Fried Chicken - POS Kasir" },
+      { name: "twitter:description", content: "Sistem kasir untuk AMI Fried Chicken: kelola menu, transaksi, stok, dan laporan penjualan." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8090bd40-6645-4e63-bc67-08531ad77bc7/id-preview-e34fb6e7--d4828d46-ee1d-41f7-8540-e10d6cb60344.lovable.app-1781166377466.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8090bd40-6645-4e63-bc67-08531ad77bc7/id-preview-e34fb6e7--d4828d46-ee1d-41f7-8540-e10d6cb60344.lovable.app-1781166377466.png" },
     ],
     links: [
       {
