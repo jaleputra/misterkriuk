@@ -208,8 +208,8 @@ function TransactionPage() {
     <>
       {/* Desktop / tablet: split layout */}
       <div className="md:grid md:grid-cols-[1fr_360px] lg:grid-cols-[1fr_400px] md:gap-4">
-        <div>{ProductGrid}</div>
-        <aside className="hidden md:block sticky top-20 self-start h-[calc(100vh-7rem)] rounded-2xl border bg-card/50 p-3">
+        <div className="pb-4">{ProductGrid}</div>
+        <aside className="hidden md:flex md:flex-col sticky top-20 self-start h-[calc(100dvh-11rem)] rounded-2xl border bg-card/50 p-3">
           {CartPanel}
         </aside>
       </div>
