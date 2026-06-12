@@ -221,24 +221,12 @@ function SettingsPage() {
           <CardContent className="space-y-2">
             {events.length === 0 && <p className="text-sm text-muted-foreground">Belum ada event.</p>}
             {events.map((e: any) => (
-              <div key={e.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold truncate">{e.name}</span>
-                    {e.event_date === today && <Badge className="bg-success text-success-foreground">Aktif Hari Ini</Badge>}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(e.event_date).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {describe(e)}
-                  </div>
-                </div>
-                <Button size="icon" variant="ghost" onClick={() => { if (confirm(`Hapus event ${e.name}?`)) delEvent.mutate(e.id); }}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
+              <EventRow key={e.id} ev={e} today={today} describe={describe} onDelete={() => { if (confirm(`Hapus event ${e.name}?`)) delEvent.mutate(e.id); }} />
             ))}
           </CardContent>
         </Card>
       </TabsContent>
+
 
       <TabsContent value="users">
         <Card>
