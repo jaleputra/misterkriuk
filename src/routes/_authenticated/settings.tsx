@@ -223,32 +223,114 @@ function SettingsPage() {
         <Card>
           <CardHeader><CardTitle className="text-base flex items-center gap-2"><Plus className="h-4 w-4" />Tambah Event</CardTitle></CardHeader>
           <CardContent>
-            <form className="grid sm:grid-cols-2 gap-3" onSubmit={(e) => { e.preventDefault(); addEvent.mutate(); }}>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Nama Event</Label>
-                <Input value={evForm.name} onChange={(e) => setEvForm({ ...evForm, name: e.target.value })} placeholder="Promo Hari Kemerdekaan" required />
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); addEvent.mutate(); }}>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Nama Event</Label>
+                  <Input value={evForm.name} onChange={(e) => setEvForm({ ...evForm, name: e.target.value })} placeholder="Promo Hari Kemerdekaan" required />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Tanggal Berlaku</Label>
+                  <Input type="date" value={evForm.event_date} onChange={(e) => setEvForm({ ...evForm, event_date: e.target.value })} required />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Tanggal Berlaku</Label>
-                <Input type="date" value={evForm.event_date} onChange={(e) => setEvForm({ ...evForm, event_date: e.target.value })} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Jenis Penyesuaian</Label>
-                <Select value={evForm.adjustment_type} onValueChange={(v) => setEvForm({ ...evForm, adjustment_type: v as any })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="percent_discount">Diskon Persen (%)</SelectItem>
-                    <SelectItem value="fixed_discount">Potongan Nominal (Rp)</SelectItem>
-                    <SelectItem value="set_price">Set Harga Tetap (Rp)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Nilai {evForm.adjustment_type === "percent_discount" ? "(%)" : "(Rp)"}</Label>
-                <Input type="number" min="0" value={evForm.adjustment_value} onChange={(e) => setEvForm({ ...evForm, adjustment_value: e.target.value })} required />
-                <p className="text-xs text-muted-foreground">Berlaku untuk semua produk, hanya pada tanggal yang ditentukan.</p>
-              </div>
-              <div className="sm:col-span-2 flex justify-end">
+
+              {evForm.name.trim() && (
+                <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
+                  <div className="space-y-2">
+                    <Label>Berlaku Untuk</Label>
+                    <RadioGroup
+                      value={evForm.scope}
+                      onValueChange={(v) => setEvForm({ ...evForm, scope: v as "all" | "per_product" })}
+                      className="grid sm:grid-cols-2 gap-2"
+                    >
+                      <label className="flex items-start gap-2 p-3 rounded-md border bg-card cursor-pointer hover:bg-accent">
+                        <RadioGroupItem value="all" className="mt-0.5" />
+                        <div>
+                          <div className="font-medium text-sm">Semua Produk</div>
+                          <div className="text-xs text-muted-foreground">Diskon yang sama untuk semua produk.</div>
+                        </div>
+                      </label>
+                      <label className="flex items-start gap-2 p-3 rounded-md border bg-card cursor-pointer hover:bg-accent">
+                        <RadioGroupItem value="per_product" className="mt-0.5" />
+                        <div>
+                          <div className="font-medium text-sm">Per Produk</div>
+                          <div className="text-xs text-muted-foreground">Pilih produk & atur harga/diskon masing-masing.</div>
+                        </div>
+                      </label>
+                    </RadioGroup>
+                  </div>
+
+                  {evForm.scope === "all" ? (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Jenis Penyesuaian</Label>
+                        <Select value={evForm.adjustment_type} onValueChange={(v) => setEvForm({ ...evForm, adjustment_type: v as any })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="percent_discount">Diskon Persen (%)</SelectItem>
+                            <SelectItem value="fixed_discount">Potongan Nominal (Rp)</SelectItem>
+                            <SelectItem value="set_price">Set Harga Tetap (Rp)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Nilai {evForm.adjustment_type === "percent_discount" ? "(%)" : "(Rp)"}</Label>
+                        <Input type="number" min="0" value={evForm.adjustment_value} onChange={(e) => setEvForm({ ...evForm, adjustment_value: e.target.value })} required />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Centang produk yang ingin diubah harganya. Produk yang tidak dicentang tetap pada harga normal.
+                      </p>
+                      {productList.length === 0 && <p className="text-sm text-muted-foreground">Belum ada produk.</p>}
+                      {productList.map((p: any) => {
+                        const d = ensureDraft(p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            className="grid grid-cols-[auto_minmax(0,1fr)] sm:grid-cols-[auto_minmax(0,1fr)_160px_140px] gap-2 items-center p-2 rounded-md bg-card border"
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary shrink-0"
+                              checked={d.enabled}
+                              onChange={(e) => setPerProductDrafts({ ...perProductDrafts, [p.id]: { ...d, enabled: e.target.checked } })}
+                            />
+                            <div className="min-w-0">
+                              <div className="font-medium text-sm truncate">{p.name}</div>
+                              <div className="text-xs text-muted-foreground">Normal: {rupiah(p.price)}</div>
+                            </div>
+                            <Select
+                              value={d.type}
+                              onValueChange={(v) => setPerProductDrafts({ ...perProductDrafts, [p.id]: { ...d, type: v } })}
+                            >
+                              <SelectTrigger className="h-9 text-xs col-span-2 sm:col-span-1" disabled={!d.enabled}><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="percent_discount">Diskon %</SelectItem>
+                                <SelectItem value="fixed_discount">Potongan Rp</SelectItem>
+                                <SelectItem value="set_price">Harga Tetap</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder={d.type === "percent_discount" ? "%" : "Rp"}
+                              className="h-9 text-xs col-span-2 sm:col-span-1"
+                              disabled={!d.enabled}
+                              value={d.value}
+                              onChange={(e) => setPerProductDrafts({ ...perProductDrafts, [p.id]: { ...d, value: e.target.value } })}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end">
                 <Button type="submit" disabled={addEvent.isPending}>Simpan Event</Button>
               </div>
             </form>
