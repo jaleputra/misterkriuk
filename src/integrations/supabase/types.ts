@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      event_items: {
+        Row: {
+          adjustment_type: string
+          adjustment_value: number
+          created_at: string
+          event_id: string
+          id: string
+          product_id: string
+          updated_at: string
+        }
+        Insert: {
+          adjustment_type: string
+          adjustment_value?: number
+          created_at?: string
+          event_id: string
+          id?: string
+          product_id: string
+          updated_at?: string
+        }
+        Update: {
+          adjustment_type?: string
+          adjustment_value?: number
+          created_at?: string
+          event_id?: string
+          id?: string
+          product_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_items_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           adjustment_type: string

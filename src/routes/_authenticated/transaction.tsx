@@ -38,19 +38,28 @@ function TransactionPage() {
     queryKey: ["events_today", today],
     queryFn: async () => (await supabase.from("events").select("*").eq("event_date", today).order("created_at", { ascending: false }).limit(1).maybeSingle()).data,
   });
+  const { data: eventItems = [] } = useQuery({
+    queryKey: ["event_items_today", activeEvent?.id],
+    enabled: !!activeEvent?.id,
+    queryFn: async () => (await supabase.from("event_items").select("*").eq("event_id", activeEvent!.id)).data ?? [],
+  });
 
-  const applyEvent = (price: number) => {
-    if (!activeEvent) return price;
-    const v = Number(activeEvent.adjustment_value);
-    if (activeEvent.adjustment_type === "percent_discount") return Math.max(0, Math.round(price * (1 - v / 100)));
-    if (activeEvent.adjustment_type === "fixed_discount") return Math.max(0, price - v);
-    if (activeEvent.adjustment_type === "set_price") return Math.max(0, v);
+  const applyAdj = (price: number, type: string, value: number) => {
+    if (type === "percent_discount") return Math.max(0, Math.round(price * (1 - value / 100)));
+    if (type === "fixed_discount") return Math.max(0, price - value);
+    if (type === "set_price") return Math.max(0, value);
     return price;
+  };
+  const applyEvent = (price: number, productId: string) => {
+    if (!activeEvent) return price;
+    const override = eventItems.find((it: any) => it.product_id === productId);
+    if (override) return applyAdj(price, override.adjustment_type, Number(override.adjustment_value));
+    return applyAdj(price, activeEvent.adjustment_type, Number(activeEvent.adjustment_value));
   };
 
   const products = useMemo(
-    () => rawProducts.map((p) => ({ ...p, originalPrice: Number(p.price), price: applyEvent(Number(p.price)) })),
-    [rawProducts, activeEvent],
+    () => rawProducts.map((p) => ({ ...p, originalPrice: Number(p.price), price: applyEvent(Number(p.price), p.id) })),
+    [rawProducts, activeEvent, eventItems],
   );
 
 
