@@ -253,3 +253,118 @@ function SettingsPage() {
     </Tabs>
   );
 }
+
+function EventRow({ ev, today, describe, onDelete }: { ev: any; today: string; describe: (e: any) => string; onDelete: () => void }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products_for_event"],
+    queryFn: async () => (await supabase.from("products").select("id,name,price").order("name")).data ?? [],
+  });
+  const { data: items = [] } = useQuery({
+    queryKey: ["event_items", ev.id],
+    enabled: open,
+    queryFn: async () => (await supabase.from("event_items").select("*").eq("event_id", ev.id)).data ?? [],
+  });
+
+  const [drafts, setDrafts] = useState<Record<string, { type: string; value: string; enabled: boolean }>>({});
+  useEffect(() => {
+    const d: Record<string, { type: string; value: string; enabled: boolean }> = {};
+    products.forEach((p: any) => {
+      const it = items.find((i: any) => i.product_id === p.id);
+      d[p.id] = it
+        ? { type: it.adjustment_type, value: String(it.adjustment_value), enabled: true }
+        : { type: ev.adjustment_type, value: String(ev.adjustment_value), enabled: false };
+    });
+    setDrafts(d);
+  }, [products, items, ev]);
+
+  const saveItem = useMutation({
+    mutationFn: async (productId: string) => {
+      const d = drafts[productId];
+      if (!d) return;
+      if (!d.enabled) {
+        const { error } = await supabase.from("event_items").delete().eq("event_id", ev.id).eq("product_id", productId);
+        if (error) throw error;
+        return;
+      }
+      const val = Number(d.value);
+      if (Number.isNaN(val) || val < 0) throw new Error("Nilai harus angka >= 0");
+      const { error } = await supabase.from("event_items").upsert({
+        event_id: ev.id, product_id: productId, adjustment_type: d.type, adjustment_value: val,
+      }, { onConflict: "event_id,product_id" });
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Disimpan"); qc.invalidateQueries({ queryKey: ["event_items", ev.id] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <div className="flex items-center justify-between gap-3 p-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold truncate">{ev.name}</span>
+            {ev.event_date === today && <Badge className="bg-success text-success-foreground">Aktif Hari Ini</Badge>}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {new Date(ev.event_date).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · Default: {describe(ev)}
+          </div>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setOpen((o) => !o)}>
+          {open ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+          Per Produk
+        </Button>
+        <Button size="icon" variant="ghost" onClick={onDelete}>
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </div>
+      {open && (
+        <div className="border-t p-3 space-y-2 bg-muted/30">
+          <p className="text-xs text-muted-foreground">Centang produk untuk mengganti harga/diskon khusus. Yang tidak dicentang mengikuti default event.</p>
+          {products.length === 0 && <p className="text-sm text-muted-foreground">Belum ada produk.</p>}
+          {products.map((p: any) => {
+            const d = drafts[p.id] ?? { type: ev.adjustment_type, value: "", enabled: false };
+            return (
+              <div key={p.id} className="grid grid-cols-[auto_1fr_140px_120px_auto] gap-2 items-center p-2 rounded-md bg-card border">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={d.enabled}
+                  onChange={(e) => setDrafts({ ...drafts, [p.id]: { ...d, enabled: e.target.checked } })}
+                />
+                <div className="min-w-0">
+                  <div className="font-medium text-sm truncate">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">Normal: {rupiah(p.price)}</div>
+                </div>
+                <Select
+                  value={d.type}
+                  onValueChange={(v) => setDrafts({ ...drafts, [p.id]: { ...d, type: v } })}
+                >
+                  <SelectTrigger className="h-8 text-xs" disabled={!d.enabled}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percent_discount">Diskon %</SelectItem>
+                    <SelectItem value="fixed_discount">Potongan Rp</SelectItem>
+                    <SelectItem value="set_price">Harga Tetap</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  min="0"
+                  className="h-8 text-xs"
+                  disabled={!d.enabled}
+                  value={d.value}
+                  onChange={(e) => setDrafts({ ...drafts, [p.id]: { ...d, value: e.target.value } })}
+                />
+                <Button size="sm" variant="secondary" onClick={() => saveItem.mutate(p.id)} disabled={saveItem.isPending}>
+                  <Save className="h-3 w-3" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
