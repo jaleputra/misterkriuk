@@ -10,7 +10,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Printer, Users, Store, CalendarDays, Trash2, Plus } from "lucide-react";
+import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save } from "lucide-react";
 import { rupiah } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/settings")({
