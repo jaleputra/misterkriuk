@@ -92,29 +92,67 @@ function SettingsPage() {
     queryFn: async () => (await supabase.from("events").select("*").order("event_date", { ascending: false })).data ?? [],
   });
 
+  const { data: productList = [] } = useQuery({
+    queryKey: ["products_for_event"],
+    queryFn: async () => (await supabase.from("products").select("id,name,price").order("name")).data ?? [],
+  });
+
   const [evForm, setEvForm] = useState({
     name: "",
     event_date: new Date().toISOString().slice(0, 10),
+    scope: "all" as "all" | "per_product",
     adjustment_type: "percent_discount" as "percent_discount" | "fixed_discount" | "set_price",
     adjustment_value: "",
   });
+  const [perProductDrafts, setPerProductDrafts] = useState<Record<string, { enabled: boolean; type: string; value: string }>>({});
+
+  const ensureDraft = (pid: string) =>
+    perProductDrafts[pid] ?? { enabled: false, type: "percent_discount", value: "" };
 
   const addEvent = useMutation({
     mutationFn: async () => {
       if (!evForm.name.trim()) throw new Error("Nama event wajib diisi");
-      const val = Number(evForm.adjustment_value);
-      if (Number.isNaN(val) || val < 0) throw new Error("Nilai harus angka >= 0");
-      const { error } = await supabase.from("events").insert({
+
+      if (evForm.scope === "all") {
+        const val = Number(evForm.adjustment_value);
+        if (Number.isNaN(val) || val < 0) throw new Error("Nilai diskon harus angka >= 0");
+        const { error } = await supabase.from("events").insert({
+          name: evForm.name.trim(),
+          event_date: evForm.event_date,
+          adjustment_type: evForm.adjustment_type,
+          adjustment_value: val,
+        });
+        if (error) throw error;
+        return;
+      }
+
+      // per_product: create event with no-op default, then upsert overrides
+      const overrides = Object.entries(perProductDrafts)
+        .filter(([, d]) => d.enabled)
+        .map(([product_id, d]) => {
+          const v = Number(d.value);
+          if (Number.isNaN(v) || v < 0) throw new Error("Semua nilai produk harus angka >= 0");
+          return { product_id, adjustment_type: d.type, adjustment_value: v };
+        });
+      if (overrides.length === 0) throw new Error("Pilih minimal satu produk untuk diberi harga khusus");
+
+      const { data: ev, error: evErr } = await supabase.from("events").insert({
         name: evForm.name.trim(),
         event_date: evForm.event_date,
-        adjustment_type: evForm.adjustment_type,
-        adjustment_value: val,
-      });
-      if (error) throw error;
+        adjustment_type: "fixed_discount",
+        adjustment_value: 0,
+      }).select("id").single();
+      if (evErr) throw evErr;
+
+      const { error: itErr } = await supabase.from("event_items").insert(
+        overrides.map((o) => ({ ...o, event_id: ev.id })),
+      );
+      if (itErr) throw itErr;
     },
     onSuccess: () => {
       toast.success("Event ditambahkan");
       setEvForm({ ...evForm, name: "", adjustment_value: "" });
+      setPerProductDrafts({});
       qc.invalidateQueries({ queryKey: ["events"] });
     },
     onError: (e: Error) => toast.error(e.message),
