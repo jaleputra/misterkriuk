@@ -302,35 +302,42 @@ function EventRow({ ev, today, describe, onDelete }: { ev: any; today: string; d
 
   return (
     <div className="rounded-lg border bg-card">
-      <div className="flex items-center justify-between gap-3 p-3">
-        <div className="min-w-0 flex-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-3">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold truncate">{ev.name}</span>
             {ev.event_date === today && <Badge className="bg-success text-success-foreground">Aktif Hari Ini</Badge>}
           </div>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground truncate">
             {new Date(ev.event_date).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · Default: {describe(ev)}
           </div>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setOpen((o) => !o)}>
-          {open ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-          Per Produk
-        </Button>
-        <Button size="icon" variant="ghost" onClick={onDelete}>
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button size="sm" variant="outline" onClick={() => setOpen((o) => !o)}>
+            {open ? <ChevronUp className="h-4 w-4 sm:mr-1" /> : <ChevronDown className="h-4 w-4 sm:mr-1" />}
+            <span className="hidden sm:inline">Diskon per Produk</span>
+          </Button>
+          <Button size="icon" variant="ghost" onClick={onDelete} aria-label="Hapus event">
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
       </div>
       {open && (
         <div className="border-t p-3 space-y-2 bg-muted/30">
-          <p className="text-xs text-muted-foreground">Centang produk untuk mengganti harga/diskon khusus. Yang tidak dicentang mengikuti default event.</p>
+          <p className="text-xs text-muted-foreground">
+            Centang produk untuk memberi diskon/harga khusus yang berbeda dari default event. Produk yang tidak dicentang akan mengikuti default event.
+          </p>
           {products.length === 0 && <p className="text-sm text-muted-foreground">Belum ada produk.</p>}
           {products.map((p: any) => {
             const d = drafts[p.id] ?? { type: ev.adjustment_type, value: "", enabled: false };
             return (
-              <div key={p.id} className="grid grid-cols-[auto_1fr_140px_120px_auto] gap-2 items-center p-2 rounded-md bg-card border">
+              <div
+                key={p.id}
+                className="grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[auto_minmax(0,1fr)_140px_120px_auto] gap-2 items-center p-2 rounded-md bg-card border"
+              >
                 <input
                   type="checkbox"
-                  className="h-4 w-4 accent-primary"
+                  className="h-4 w-4 accent-primary shrink-0"
                   checked={d.enabled}
                   onChange={(e) => setDrafts({ ...drafts, [p.id]: { ...d, enabled: e.target.checked } })}
                 />
@@ -338,11 +345,21 @@ function EventRow({ ev, today, describe, onDelete }: { ev: any; today: string; d
                   <div className="font-medium text-sm truncate">{p.name}</div>
                   <div className="text-xs text-muted-foreground">Normal: {rupiah(p.price)}</div>
                 </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="sm:hidden shrink-0"
+                  onClick={() => saveItem.mutate(p.id)}
+                  disabled={saveItem.isPending}
+                  aria-label="Simpan"
+                >
+                  <Save className="h-3 w-3" />
+                </Button>
                 <Select
                   value={d.type}
                   onValueChange={(v) => setDrafts({ ...drafts, [p.id]: { ...d, type: v } })}
                 >
-                  <SelectTrigger className="h-8 text-xs" disabled={!d.enabled}><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-8 text-xs col-span-2 sm:col-span-1" disabled={!d.enabled}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="percent_discount">Diskon %</SelectItem>
                     <SelectItem value="fixed_discount">Potongan Rp</SelectItem>
@@ -352,12 +369,19 @@ function EventRow({ ev, today, describe, onDelete }: { ev: any; today: string; d
                 <Input
                   type="number"
                   min="0"
-                  className="h-8 text-xs"
+                  placeholder={d.type === "percent_discount" ? "%" : "Rp"}
+                  className="h-8 text-xs col-span-2 sm:col-span-1"
                   disabled={!d.enabled}
                   value={d.value}
                   onChange={(e) => setDrafts({ ...drafts, [p.id]: { ...d, value: e.target.value } })}
                 />
-                <Button size="sm" variant="secondary" onClick={() => saveItem.mutate(p.id)} disabled={saveItem.isPending}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="hidden sm:inline-flex shrink-0"
+                  onClick={() => saveItem.mutate(p.id)}
+                  disabled={saveItem.isPending}
+                >
                   <Save className="h-3 w-3" />
                 </Button>
               </div>
