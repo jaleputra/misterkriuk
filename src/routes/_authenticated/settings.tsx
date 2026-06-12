@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { rupiah } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -91,29 +92,67 @@ function SettingsPage() {
     queryFn: async () => (await supabase.from("events").select("*").order("event_date", { ascending: false })).data ?? [],
   });
 
+  const { data: productList = [] } = useQuery({
+    queryKey: ["products_for_event"],
+    queryFn: async () => (await supabase.from("products").select("id,name,price").order("name")).data ?? [],
+  });
+
   const [evForm, setEvForm] = useState({
     name: "",
     event_date: new Date().toISOString().slice(0, 10),
+    scope: "all" as "all" | "per_product",
     adjustment_type: "percent_discount" as "percent_discount" | "fixed_discount" | "set_price",
     adjustment_value: "",
   });
+  const [perProductDrafts, setPerProductDrafts] = useState<Record<string, { enabled: boolean; type: string; value: string }>>({});
+
+  const ensureDraft = (pid: string) =>
+    perProductDrafts[pid] ?? { enabled: false, type: "percent_discount", value: "" };
 
   const addEvent = useMutation({
     mutationFn: async () => {
       if (!evForm.name.trim()) throw new Error("Nama event wajib diisi");
-      const val = Number(evForm.adjustment_value);
-      if (Number.isNaN(val) || val < 0) throw new Error("Nilai harus angka >= 0");
-      const { error } = await supabase.from("events").insert({
+
+      if (evForm.scope === "all") {
+        const val = Number(evForm.adjustment_value);
+        if (Number.isNaN(val) || val < 0) throw new Error("Nilai diskon harus angka >= 0");
+        const { error } = await supabase.from("events").insert({
+          name: evForm.name.trim(),
+          event_date: evForm.event_date,
+          adjustment_type: evForm.adjustment_type,
+          adjustment_value: val,
+        });
+        if (error) throw error;
+        return;
+      }
+
+      // per_product: create event with no-op default, then upsert overrides
+      const overrides = Object.entries(perProductDrafts)
+        .filter(([, d]) => d.enabled)
+        .map(([product_id, d]) => {
+          const v = Number(d.value);
+          if (Number.isNaN(v) || v < 0) throw new Error("Semua nilai produk harus angka >= 0");
+          return { product_id, adjustment_type: d.type, adjustment_value: v };
+        });
+      if (overrides.length === 0) throw new Error("Pilih minimal satu produk untuk diberi harga khusus");
+
+      const { data: ev, error: evErr } = await supabase.from("events").insert({
         name: evForm.name.trim(),
         event_date: evForm.event_date,
-        adjustment_type: evForm.adjustment_type,
-        adjustment_value: val,
-      });
-      if (error) throw error;
+        adjustment_type: "fixed_discount",
+        adjustment_value: 0,
+      }).select("id").single();
+      if (evErr) throw evErr;
+
+      const { error: itErr } = await supabase.from("event_items").insert(
+        overrides.map((o) => ({ ...o, event_id: ev.id })),
+      );
+      if (itErr) throw itErr;
     },
     onSuccess: () => {
       toast.success("Event ditambahkan");
       setEvForm({ ...evForm, name: "", adjustment_value: "" });
+      setPerProductDrafts({});
       qc.invalidateQueries({ queryKey: ["events"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -184,32 +223,114 @@ function SettingsPage() {
         <Card>
           <CardHeader><CardTitle className="text-base flex items-center gap-2"><Plus className="h-4 w-4" />Tambah Event</CardTitle></CardHeader>
           <CardContent>
-            <form className="grid sm:grid-cols-2 gap-3" onSubmit={(e) => { e.preventDefault(); addEvent.mutate(); }}>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Nama Event</Label>
-                <Input value={evForm.name} onChange={(e) => setEvForm({ ...evForm, name: e.target.value })} placeholder="Promo Hari Kemerdekaan" required />
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); addEvent.mutate(); }}>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Nama Event</Label>
+                  <Input value={evForm.name} onChange={(e) => setEvForm({ ...evForm, name: e.target.value })} placeholder="Promo Hari Kemerdekaan" required />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Tanggal Berlaku</Label>
+                  <Input type="date" value={evForm.event_date} onChange={(e) => setEvForm({ ...evForm, event_date: e.target.value })} required />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Tanggal Berlaku</Label>
-                <Input type="date" value={evForm.event_date} onChange={(e) => setEvForm({ ...evForm, event_date: e.target.value })} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Jenis Penyesuaian</Label>
-                <Select value={evForm.adjustment_type} onValueChange={(v) => setEvForm({ ...evForm, adjustment_type: v as any })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="percent_discount">Diskon Persen (%)</SelectItem>
-                    <SelectItem value="fixed_discount">Potongan Nominal (Rp)</SelectItem>
-                    <SelectItem value="set_price">Set Harga Tetap (Rp)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Nilai {evForm.adjustment_type === "percent_discount" ? "(%)" : "(Rp)"}</Label>
-                <Input type="number" min="0" value={evForm.adjustment_value} onChange={(e) => setEvForm({ ...evForm, adjustment_value: e.target.value })} required />
-                <p className="text-xs text-muted-foreground">Berlaku untuk semua produk, hanya pada tanggal yang ditentukan.</p>
-              </div>
-              <div className="sm:col-span-2 flex justify-end">
+
+              {evForm.name.trim() && (
+                <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
+                  <div className="space-y-2">
+                    <Label>Berlaku Untuk</Label>
+                    <RadioGroup
+                      value={evForm.scope}
+                      onValueChange={(v) => setEvForm({ ...evForm, scope: v as "all" | "per_product" })}
+                      className="grid sm:grid-cols-2 gap-2"
+                    >
+                      <label className="flex items-start gap-2 p-3 rounded-md border bg-card cursor-pointer hover:bg-accent">
+                        <RadioGroupItem value="all" className="mt-0.5" />
+                        <div>
+                          <div className="font-medium text-sm">Semua Produk</div>
+                          <div className="text-xs text-muted-foreground">Diskon yang sama untuk semua produk.</div>
+                        </div>
+                      </label>
+                      <label className="flex items-start gap-2 p-3 rounded-md border bg-card cursor-pointer hover:bg-accent">
+                        <RadioGroupItem value="per_product" className="mt-0.5" />
+                        <div>
+                          <div className="font-medium text-sm">Per Produk</div>
+                          <div className="text-xs text-muted-foreground">Pilih produk & atur harga/diskon masing-masing.</div>
+                        </div>
+                      </label>
+                    </RadioGroup>
+                  </div>
+
+                  {evForm.scope === "all" ? (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Jenis Penyesuaian</Label>
+                        <Select value={evForm.adjustment_type} onValueChange={(v) => setEvForm({ ...evForm, adjustment_type: v as any })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="percent_discount">Diskon Persen (%)</SelectItem>
+                            <SelectItem value="fixed_discount">Potongan Nominal (Rp)</SelectItem>
+                            <SelectItem value="set_price">Set Harga Tetap (Rp)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Nilai {evForm.adjustment_type === "percent_discount" ? "(%)" : "(Rp)"}</Label>
+                        <Input type="number" min="0" value={evForm.adjustment_value} onChange={(e) => setEvForm({ ...evForm, adjustment_value: e.target.value })} required />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Centang produk yang ingin diubah harganya. Produk yang tidak dicentang tetap pada harga normal.
+                      </p>
+                      {productList.length === 0 && <p className="text-sm text-muted-foreground">Belum ada produk.</p>}
+                      {productList.map((p: any) => {
+                        const d = ensureDraft(p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            className="grid grid-cols-[auto_minmax(0,1fr)] sm:grid-cols-[auto_minmax(0,1fr)_160px_140px] gap-2 items-center p-2 rounded-md bg-card border"
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary shrink-0"
+                              checked={d.enabled}
+                              onChange={(e) => setPerProductDrafts({ ...perProductDrafts, [p.id]: { ...d, enabled: e.target.checked } })}
+                            />
+                            <div className="min-w-0">
+                              <div className="font-medium text-sm truncate">{p.name}</div>
+                              <div className="text-xs text-muted-foreground">Normal: {rupiah(p.price)}</div>
+                            </div>
+                            <Select
+                              value={d.type}
+                              onValueChange={(v) => setPerProductDrafts({ ...perProductDrafts, [p.id]: { ...d, type: v } })}
+                            >
+                              <SelectTrigger className="h-9 text-xs col-span-2 sm:col-span-1" disabled={!d.enabled}><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="percent_discount">Diskon %</SelectItem>
+                                <SelectItem value="fixed_discount">Potongan Rp</SelectItem>
+                                <SelectItem value="set_price">Harga Tetap</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder={d.type === "percent_discount" ? "%" : "Rp"}
+                              className="h-9 text-xs col-span-2 sm:col-span-1"
+                              disabled={!d.enabled}
+                              value={d.value}
+                              onChange={(e) => setPerProductDrafts({ ...perProductDrafts, [p.id]: { ...d, value: e.target.value } })}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end">
                 <Button type="submit" disabled={addEvent.isPending}>Simpan Event</Button>
               </div>
             </form>
