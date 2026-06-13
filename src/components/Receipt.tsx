@@ -8,6 +8,8 @@ interface ReceiptProps {
     payment_method: string;
     cash_received: number | string | null;
     change_amount: number | string | null;
+    sale_category?: string;
+    partner_name?: string | null;
     items: { product_name: string; price: number; quantity: number; subtotal: number }[];
   };
   settings?: { shop_name?: string | null; shop_address?: string | null; shop_phone?: string | null } | null;
@@ -24,6 +26,9 @@ export function Receipt({ tx, settings }: ReceiptProps) {
       <hr className="border-t border-dashed border-black my-2" />
       <div className="row flex justify-between"><span>No.</span><span>{tx.id.slice(0, 8).toUpperCase()}</span></div>
       <div className="row flex justify-between"><span>Tanggal</span><span>{new Date(tx.created_at).toLocaleString("id-ID")}</span></div>
+      {tx.sale_category === "partner" && tx.partner_name && (
+        <div className="row flex justify-between"><span>Partner</span><span>{tx.partner_name}</span></div>
+      )}
       <hr className="border-t border-dashed border-black my-2" />
       {tx.items.map((i, idx) => (
         <div key={idx} className="mb-1">
@@ -41,7 +46,9 @@ export function Receipt({ tx, settings }: ReceiptProps) {
         </>
       )}
       <hr className="border-t border-dashed border-black my-2" />
-      <div className="center text-center">Terima kasih 🙏</div>
+      <div className="center text-center">
+        {tx.sale_category === "partner" ? `Terima kasih ${tx.partner_name ?? "Partner"} dari Stockist Cileungsi 🙏` : "Terima kasih 🙏"}
+      </div>
     </div>
   );
 }
