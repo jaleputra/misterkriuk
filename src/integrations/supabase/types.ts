@@ -124,7 +124,6 @@ export type Database = {
       }
       products: {
         Row: {
-          category: string
           created_at: string
           id: string
           image_url: string | null
@@ -134,7 +133,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          category?: string
           created_at?: string
           id?: string
           image_url?: string | null
@@ -144,7 +142,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          category?: string
           created_at?: string
           id?: string
           image_url?: string | null
@@ -176,33 +173,6 @@ export type Database = {
         }
         Relationships: []
       }
-      stock_entries: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          id: string
-          restock_date: string
-          shipping_cost: number
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          restock_date?: string
-          shipping_cost?: number
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          restock_date?: string
-          shipping_cost?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
       stock_movements: {
         Row: {
           created_at: string
@@ -212,8 +182,6 @@ export type Database = {
           product_id: string
           quantity: number
           shipping_cost: number
-          stock_entry_id: string | null
-          updated_at: string
         }
         Insert: {
           created_at?: string
@@ -223,8 +191,6 @@ export type Database = {
           product_id: string
           quantity: number
           shipping_cost?: number
-          stock_entry_id?: string | null
-          updated_at?: string
         }
         Update: {
           created_at?: string
@@ -234,8 +200,6 @@ export type Database = {
           product_id?: string
           quantity?: number
           shipping_cost?: number
-          stock_entry_id?: string | null
-          updated_at?: string
         }
         Relationships: [
           {
@@ -245,18 +209,10 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "stock_movements_stock_entry_id_fkey"
-            columns: ["stock_entry_id"]
-            isOneToOne: false
-            referencedRelation: "stock_entries"
-            referencedColumns: ["id"]
-          },
         ]
       }
       transaction_items: {
         Row: {
-          cost_price: number
           id: string
           price: number
           product_id: string | null
@@ -266,7 +222,6 @@ export type Database = {
           transaction_id: string
         }
         Insert: {
-          cost_price?: number
           id?: string
           price: number
           product_id?: string | null
@@ -276,7 +231,6 @@ export type Database = {
           transaction_id: string
         }
         Update: {
-          cost_price?: number
           id?: string
           price?: number
           product_id?: string | null
@@ -309,9 +263,7 @@ export type Database = {
           change_amount: number | null
           created_at: string
           id: string
-          partner_name: string | null
           payment_method: string
-          sale_category: string
           total: number
         }
         Insert: {
@@ -320,9 +272,7 @@ export type Database = {
           change_amount?: number | null
           created_at?: string
           id?: string
-          partner_name?: string | null
           payment_method: string
-          sale_category?: string
           total: number
         }
         Update: {
@@ -331,9 +281,7 @@ export type Database = {
           change_amount?: number | null
           created_at?: string
           id?: string
-          partner_name?: string | null
           payment_method?: string
-          sale_category?: string
           total?: number
         }
         Relationships: []
