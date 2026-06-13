@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   LineChart, Line, PieChart, Pie, Cell, Legend,
 } from "recharts";
-import { TrendingUp, ShoppingBag, DollarSign, Package } from "lucide-react";
+import { TrendingUp, ShoppingBag, DollarSign, Package, BadgeDollarSign } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   ssr: false,
@@ -43,6 +43,11 @@ function Dashboard() {
   const todayTx = txs.filter((t) => t.created_at.slice(0, 10) === today);
   const todayRevenue = todayTx.reduce((s, t) => s + Number(t.total), 0);
   const totalRevenue = txs.reduce((s, t) => s + Number(t.total), 0);
+  const todayIds = new Set(todayTx.map((transaction) => transaction.id));
+  const totalProfit = items.reduce((sum, item) => sum + (Number(item.price) - Number(item.cost_price)) * item.quantity, 0);
+  const todayProfit = items
+    .filter((item) => todayIds.has(item.transaction_id))
+    .reduce((sum, item) => sum + (Number(item.price) - Number(item.cost_price)) * item.quantity, 0);
 
   // daily revenue last 14 days
   const dailyMap: Record<string, number> = {};
@@ -82,9 +87,10 @@ function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
         <Stat icon={DollarSign} label="Penjualan Hari Ini" value={rupiah(todayRevenue)} sub={`${todayTx.length} transaksi`} />
         <Stat icon={TrendingUp} label="Total 14 Hari" value={rupiah(totalRevenue)} sub={`${txs.length} transaksi`} />
+        <Stat icon={BadgeDollarSign} label="Profit" value={rupiah(totalProfit)} sub={`hari ini ${rupiah(todayProfit)}`} />
         <Stat icon={ShoppingBag} label="Item Terjual" value={String(items.reduce((s, i) => s + i.quantity, 0))} sub="kumulatif" />
         <Stat icon={Package} label="Stok Menipis" value={String(lowStock)} sub="≤ 5 pcs" />
       </div>
