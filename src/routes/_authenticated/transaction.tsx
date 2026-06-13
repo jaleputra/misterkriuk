@@ -9,15 +9,17 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
-import { Plus, Minus, Trash2, ShoppingCart, Printer, Share2, X, Drumstick, Banknote, QrCode } from "lucide-react";
+import { Plus, Minus, Trash2, ShoppingCart, Printer, Share2, X, Drumstick, Banknote, QrCode, Search, Users } from "lucide-react";
 import { Receipt } from "@/components/Receipt";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
   component: TransactionPage,
 });
 
-type Product = { id: string; name: string; price: number; stock: number; image_url?: string | null };
+type Product = { id: string; name: string; price: number; stock: number; category: string; image_url?: string | null; originalPrice?: number; costPrice?: number };
 type CartItem = { product: Product; qty: number };
 
 function TransactionPage() {
@@ -29,6 +31,10 @@ function TransactionPage() {
       const { data } = await supabase.from("products").select("*").order("name");
       return (data ?? []) as Product[];
     },
+  });
+  const { data: stockCosts = [] } = useQuery({
+    queryKey: ["latest_stock_costs"],
+    queryFn: async () => (await supabase.from("stock_movements").select("product_id,initial_price,created_at").order("created_at", { ascending: false })).data ?? [],
   });
   const { data: settings } = useQuery({
     queryKey: ["printer_settings"],
@@ -58,8 +64,13 @@ function TransactionPage() {
   };
 
   const products = useMemo(
-    () => rawProducts.map((p) => ({ ...p, originalPrice: Number(p.price), price: applyEvent(Number(p.price), p.id) })),
-    [rawProducts, activeEvent, eventItems],
+    () => rawProducts.map((p) => ({
+      ...p,
+      originalPrice: Number(p.price),
+      price: applyEvent(Number(p.price), p.id),
+      costPrice: Number(stockCosts.find((cost) => cost.product_id === p.id)?.initial_price ?? 0),
+    })),
+    [rawProducts, activeEvent, eventItems, stockCosts],
   );
 
 
@@ -69,7 +80,17 @@ function TransactionPage() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [payMethod, setPayMethod] = useState<"cash" | "qris">("cash");
   const [cashReceived, setCashReceived] = useState("");
+  const [saleCategory, setSaleCategory] = useState<"customer" | "partner">("customer");
+  const [partnerName, setPartnerName] = useState("");
+  const [search, setSearch] = useState("");
   const [lastTx, setLastTx] = useState<any>(null);
+
+  const visibleProducts = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("id-ID");
+    return products.filter((product) =>
+      product.category === saleCategory && (term.length < 3 || product.name.toLocaleLowerCase("id-ID").includes(term)),
+    );
+  }, [products, saleCategory, search]);
 
   const total = useMemo(() => cart.reduce((s, i) => s + Number(i.product.price) * i.qty, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, i) => s + i.qty, 0), [cart]);
@@ -100,6 +121,7 @@ function TransactionPage() {
   const checkout = useMutation({
     mutationFn: async () => {
       if (cart.length === 0) throw new Error("Keranjang kosong");
+      if (saleCategory === "partner" && !partnerName.trim()) throw new Error("Nama partner wajib diisi");
       if (payMethod === "cash" && Number(cashReceived) < total) throw new Error("Uang tunai kurang");
       const { data: u } = await supabase.auth.getUser();
       const { data: tx, error } = await supabase.from("transactions").insert({
@@ -108,6 +130,8 @@ function TransactionPage() {
         cash_received: payMethod === "cash" ? Number(cashReceived) : null,
         change_amount: payMethod === "cash" ? change : null,
         cashier_id: u.user?.id,
+        sale_category: saleCategory,
+        partner_name: saleCategory === "partner" ? partnerName.trim() : null,
       }).select().single();
       if (error) throw error;
 
@@ -118,6 +142,7 @@ function TransactionPage() {
         price: Number(i.product.price),
         quantity: i.qty,
         subtotal: Number(i.product.price) * i.qty,
+        cost_price: Number(i.product.costPrice ?? 0),
       }));
       const { error: e2 } = await supabase.from("transaction_items").insert(items);
       if (e2) throw e2;
@@ -136,6 +161,7 @@ function TransactionPage() {
       setReceiptOpen(true);
       setCart([]);
       setCashReceived("");
+      setPartnerName("");
       qc.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -143,6 +169,23 @@ function TransactionPage() {
 
   const ProductGrid = (
     <>
+      <div className="mb-3 grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
+        <Select value={saleCategory} onValueChange={(value) => {
+          setSaleCategory(value as "customer" | "partner");
+          setCart([]);
+          setPartnerName("");
+        }}>
+          <SelectTrigger aria-label="Kategori checkout"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="customer">Customer</SelectItem>
+            <SelectItem value="partner">Partner</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="Ketik minimal 3 huruf untuk mencari produk" />
+        </div>
+      </div>
       {activeEvent && (
         <div className="mb-3 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-primary flex items-center gap-2">
           🎉 Event aktif: <span className="font-bold">{activeEvent.name}</span>
@@ -154,7 +197,7 @@ function TransactionPage() {
         </div>
       )}
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-      {products.map((p) => {
+       {visibleProducts.map((p) => {
         const out = p.stock <= 0;
         return (
           <button
@@ -190,8 +233,8 @@ function TransactionPage() {
           </button>
         );
       })}
-      {products.length === 0 && (
-        <div className="col-span-full text-center text-muted-foreground py-10">Belum ada produk.</div>
+      {visibleProducts.length === 0 && (
+        <div className="col-span-full text-center text-muted-foreground py-10">Tidak ada produk {saleCategory === "partner" ? "partner" : "customer"} yang sesuai.</div>
       )}
     </div>
     </>
@@ -287,6 +330,15 @@ function TransactionPage() {
             <div className="text-xs text-muted-foreground">Total Tagihan</div>
             <div className="text-3xl font-bold text-primary">{rupiah(total)}</div>
           </div>
+          {saleCategory === "partner" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="partner-name">Nama Partner</Label>
+              <div className="relative">
+                <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input id="partner-name" value={partnerName} onChange={(event) => setPartnerName(event.target.value)} className="pl-9" placeholder="Masukkan nama partner" required />
+              </div>
+            </div>
+          )}
           <Tabs value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
             <TabsList className="grid grid-cols-2">
               <TabsTrigger value="cash"><Banknote className="h-4 w-4 mr-2" />Cash</TabsTrigger>
