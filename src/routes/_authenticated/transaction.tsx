@@ -47,7 +47,10 @@ function TransactionPage() {
   const { data: eventItems = [] } = useQuery({
     queryKey: ["event_items_today", activeEvent?.id],
     enabled: !!activeEvent?.id,
-    queryFn: async () => (await supabase.from("event_items").select("*").eq("event_id", activeEvent!.id)).data ?? [],
+    queryFn: async () => {
+      if (!activeEvent?.id) return [];
+      return (await supabase.from("event_items").select("*").eq("event_id", activeEvent.id)).data ?? [];
+    },
   });
 
   const applyAdj = (price: number, type: string, value: number) => {
@@ -417,6 +420,7 @@ function shareWA(tx: any, settings: any) {
   lines.push(`*${settings?.shop_name ?? "AMI Fried Chicken"}*`);
   lines.push(`Struk: ${tx.id.slice(0, 8).toUpperCase()}`);
   lines.push(`${new Date(tx.created_at).toLocaleString("id-ID")}`);
+  if (tx.sale_category === "partner" && tx.partner_name) lines.push(`Partner: ${tx.partner_name}`);
   lines.push("--------------------");
   tx.items.forEach((i: any) => {
     lines.push(`${i.product_name}`);
@@ -429,7 +433,9 @@ function shareWA(tx: any, settings: any) {
     lines.push(`Tunai: ${rupiah(tx.cash_received)}`);
     lines.push(`Kembali: ${rupiah(tx.change_amount)}`);
   }
-  lines.push("\nTerima kasih 🙏");
+  lines.push(tx.sale_category === "partner"
+    ? `\nTerima kasih ${tx.partner_name ?? "Partner"} dari Stockist Cileungsi 🙏`
+    : "\nTerima kasih 🙏");
   const msg = encodeURIComponent(lines.join("\n"));
   const phone = settings?.whatsapp_number ? settings.whatsapp_number.replace(/\D/g, "") : "";
   window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
