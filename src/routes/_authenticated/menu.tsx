@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { rupiah } from "@/lib/format";
 import { Pencil, Trash2, Plus, ImagePlus, Drumstick, X } from "lucide-react";
 import { toast } from "sonner";
@@ -23,10 +25,10 @@ function MenuPage() {
   });
 
   const [editing, setEditing] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", price: "", stock: "", image_url: "" });
+  const [form, setForm] = useState({ name: "", price: "", stock: "", image_url: "", category: "customer" });
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const reset = () => { setEditing(null); setForm({ name: "", price: "", stock: "", image_url: "" }); };
+  const reset = () => { setEditing(null); setForm({ name: "", price: "", stock: "", image_url: "", category: "customer" }); };
 
   const handleFile = async (file: File) => {
     if (file.size > 2 * 1024 * 1024) { toast.error("Ukuran maks 2MB"); return; }
@@ -60,6 +62,7 @@ function MenuPage() {
         price: Number(form.price),
         stock: Number(form.stock),
         image_url: form.image_url || null,
+        category: form.category,
       };
       if (!payload.name) throw new Error("Nama wajib diisi");
       if (editing) {
@@ -129,6 +132,16 @@ function MenuPage() {
               <Input type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
             </div>
             <div className="space-y-1.5">
+              <Label>Kategori Produk</Label>
+              <Select value={form.category} onValueChange={(category) => setForm({ ...form, category })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="customer">Customer</SelectItem>
+                  <SelectItem value="partner">Partner</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label>Stok</Label>
               <Input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} required />
             </div>
@@ -156,11 +169,14 @@ function MenuPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="font-semibold truncate">{p.name}</div>
-                  <div className="text-xs text-muted-foreground">{rupiah(p.price)} · Stok {p.stock}</div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{rupiah(p.price)} · Stok {p.stock}</span>
+                    <Badge variant="secondary" className="text-[10px]">{p.category === "partner" ? "Partner" : "Customer"}</Badge>
+                  </div>
                 </div>
               </div>
               <div className="flex gap-1 shrink-0">
-                <Button size="icon" variant="ghost" onClick={() => { setEditing(p.id); setForm({ name: p.name, price: String(p.price), stock: String(p.stock), image_url: p.image_url ?? "" }); }}>
+                <Button size="icon" variant="ghost" onClick={() => { setEditing(p.id); setForm({ name: p.name, price: String(p.price), stock: String(p.stock), image_url: p.image_url ?? "", category: p.category ?? "customer" }); }}>
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <Button size="icon" variant="ghost" onClick={() => { if (confirm(`Hapus ${p.name}?`)) del.mutate(p.id); }}>
