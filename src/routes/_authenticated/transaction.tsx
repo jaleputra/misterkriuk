@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { printReceiptPdf, shareReceiptPdf } from "@/lib/receipt-pdf.client";
+import type { ReceiptPdfTransaction } from "@/lib/receipt-pdf.client";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
@@ -56,6 +57,14 @@ type Product = {
   costPrice?: number;
 };
 type CartItem = { product: Product; qty: number };
+type EventItem = { product_id: string; adjustment_type: string; adjustment_value: number };
+
+const applyAdjustment = (price: number, type: string, value: number) => {
+  if (type === "percent_discount") return Math.max(0, Math.round(price * (1 - value / 100)));
+  if (type === "fixed_discount") return Math.max(0, price - value);
+  if (type === "set_price") return Math.max(0, value);
+  return price;
+};
 
 function TransactionPage() {
   const qc = useQueryClient();
@@ -106,19 +115,20 @@ function TransactionPage() {
     },
   });
 
-  const applyAdj = (price: number, type: string, value: number) => {
-    if (type === "percent_discount") return Math.max(0, Math.round(price * (1 - value / 100)));
-    if (type === "fixed_discount") return Math.max(0, price - value);
-    if (type === "set_price") return Math.max(0, value);
-    return price;
-  };
-  const applyEvent = (price: number, productId: string) => {
-    if (!activeEvent) return price;
-    const override = eventItems.find((it: any) => it.product_id === productId);
-    if (override)
-      return applyAdj(price, override.adjustment_type, Number(override.adjustment_value));
-    return applyAdj(price, activeEvent.adjustment_type, Number(activeEvent.adjustment_value));
-  };
+  const applyEvent = useCallback(
+    (price: number, productId: string) => {
+      if (!activeEvent) return price;
+      const override = (eventItems as EventItem[]).find((item) => item.product_id === productId);
+      if (override)
+        return applyAdjustment(price, override.adjustment_type, Number(override.adjustment_value));
+      return applyAdjustment(
+        price,
+        activeEvent.adjustment_type,
+        Number(activeEvent.adjustment_value),
+      );
+    },
+    [activeEvent, eventItems],
+  );
 
   const products = useMemo(
     () =>
@@ -128,7 +138,7 @@ function TransactionPage() {
         price: applyEvent(Number(p.price), p.id),
         costPrice: Number(stockCosts.find((cost) => cost.product_id === p.id)?.initial_price ?? 0),
       })),
-    [rawProducts, activeEvent, eventItems, stockCosts],
+    [rawProducts, applyEvent, stockCosts],
   );
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -139,8 +149,10 @@ function TransactionPage() {
   const [cashReceived, setCashReceived] = useState("");
   const [saleCategory, setSaleCategory] = useState<"customer" | "partner">("customer");
   const [partnerName, setPartnerName] = useState("");
+  const [buyerName, setBuyerName] = useState("");
+  const [houseBlock, setHouseBlock] = useState("");
   const [search, setSearch] = useState("");
-  const [lastTx, setLastTx] = useState<any>(null);
+  const [lastTx, setLastTx] = useState<ReceiptPdfTransaction | null>(null);
 
   const visibleProducts = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("id-ID");
@@ -193,6 +205,8 @@ function TransactionPage() {
       if (cart.length === 0) throw new Error("Keranjang kosong");
       if (saleCategory === "partner" && !partnerName.trim())
         throw new Error("Nama partner wajib diisi");
+      if (!buyerName.trim()) throw new Error("Nama pembeli wajib diisi");
+      if (!houseBlock.trim()) throw new Error("Blok rumah wajib diisi");
       if (payMethod === "cash" && Number(cashReceived) < total)
         throw new Error("Uang tunai kurang");
       const { data: u } = await supabase.auth.getUser();
@@ -206,6 +220,8 @@ function TransactionPage() {
           cashier_id: u.user?.id,
           sale_category: saleCategory,
           partner_name: saleCategory === "partner" ? partnerName.trim() : null,
+          buyer_name: buyerName.trim(),
+          house_block: houseBlock.trim(),
         })
         .select()
         .single();
@@ -239,6 +255,8 @@ function TransactionPage() {
       setCart([]);
       setCashReceived("");
       setPartnerName("");
+      setBuyerName("");
+      setHouseBlock("");
       qc.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -480,7 +498,32 @@ function TransactionPage() {
               </div>
             </div>
           )}
-          <Tabs value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="buyer-name">Nama Pembeli</Label>
+              <Input
+                id="buyer-name"
+                value={buyerName}
+                onChange={(event) => setBuyerName(event.target.value)}
+                placeholder="Nama pembeli"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="house-block">Blok Rumah</Label>
+              <Input
+                id="house-block"
+                value={houseBlock}
+                onChange={(event) => setHouseBlock(event.target.value)}
+                placeholder="Contoh: Blok A1"
+                required
+              />
+            </div>
+          </div>
+          <Tabs
+            value={payMethod}
+            onValueChange={(value) => setPayMethod(value === "qris" ? "qris" : "cash")}
+          >
             <TabsList className="grid grid-cols-2">
               <TabsTrigger value="cash">
                 <Banknote className="h-4 w-4 mr-2" />
@@ -551,6 +594,7 @@ function TransactionPage() {
               variant="outline"
               className="flex-1"
               onClick={() => {
+                if (!lastTx) return;
                 try {
                   printReceiptPdf(lastTx, settings ?? null);
                 } catch (error) {
@@ -564,6 +608,7 @@ function TransactionPage() {
             <Button
               className="flex-1 bg-success text-success-foreground hover:bg-success/90"
               onClick={async () => {
+                if (!lastTx) return;
                 try {
                   await shareReceiptPdf(lastTx, settings ?? null);
                 } catch (error) {

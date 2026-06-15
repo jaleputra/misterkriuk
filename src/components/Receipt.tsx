@@ -10,6 +10,8 @@ interface ReceiptProps {
     change_amount: number | string | null;
     sale_category?: string;
     partner_name?: string | null;
+    buyer_name?: string | null;
+    house_block?: string | null;
     items: { product_name: string; price: number; quantity: number; subtotal: number }[];
   };
   settings?: {
@@ -77,9 +79,7 @@ export function Receipt({ tx, settings }: ReceiptProps) {
       )}
       <hr className="border-t border-dashed border-black my-2" />
       <div className="center text-center">
-        {tx.sale_category === "partner"
-          ? `Terima kasih ${tx.partner_name ?? "Partner"} dari Stockist Cileungsi 🙏`
-          : "Terima kasih 🙏"}
+        Terima kasih {tx.buyer_name ?? "Pembeli"} {tx.house_block ?? ""} 🙏
       </div>
     </div>
   );
