@@ -10,6 +10,8 @@ export type ReceiptPdfTransaction = {
   change_amount: number | string | null;
   sale_category?: string;
   partner_name?: string | null;
+  buyer_name?: string | null;
+  house_block?: string | null;
   items: { product_name: string; price: number; quantity: number; subtotal: number }[];
 };
 
@@ -93,11 +95,7 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
     row("Kembalian", rupiah(tx.change_amount ?? 0));
   }
   divider();
-  centerText(
-    tx.sale_category === "partner"
-      ? `Terima kasih ${tx.partner_name ?? "Partner"} dari Stockist Cileungsi`
-      : "Terima kasih",
-  );
+  centerText(`Terima kasih ${tx.buyer_name ?? "Pembeli"} ${tx.house_block ?? ""}`.trim());
 
   return { pdf, fileName: safeFileName(tx) };
 }
@@ -115,18 +113,10 @@ export function printReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfS
 
 export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
   const { pdf, fileName } = createReceiptPdf(tx, settings);
-  const file = new File([pdf.output("blob")], fileName, { type: "application/pdf" });
-  const shareData: ShareData = {
-    title: `Struk ${tx.id.slice(0, 8).toUpperCase()}`,
-    text: `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"}`,
-    files: [file],
-  };
-
-  if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
-    await navigator.share(shareData);
-    return;
-  }
-
   pdf.save(fileName);
-  throw new Error("PDF telah diunduh. Lampirkan file tersebut melalui WhatsApp.");
+  const message = encodeURIComponent(
+    `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? "pembeli"} ${tx.house_block ?? ""}. PDF struk sudah diunduh, silakan lampirkan file ${fileName}.`,
+  );
+  const whatsappWindow = window.open(`https://wa.me/?text=${message}`, "_blank");
+  if (!whatsappWindow) throw new Error("Izinkan pop-up untuk membuka WhatsApp");
 }

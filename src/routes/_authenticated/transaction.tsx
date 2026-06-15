@@ -139,6 +139,8 @@ function TransactionPage() {
   const [cashReceived, setCashReceived] = useState("");
   const [saleCategory, setSaleCategory] = useState<"customer" | "partner">("customer");
   const [partnerName, setPartnerName] = useState("");
+  const [buyerName, setBuyerName] = useState("");
+  const [houseBlock, setHouseBlock] = useState("");
   const [search, setSearch] = useState("");
   const [lastTx, setLastTx] = useState<any>(null);
 
@@ -193,6 +195,8 @@ function TransactionPage() {
       if (cart.length === 0) throw new Error("Keranjang kosong");
       if (saleCategory === "partner" && !partnerName.trim())
         throw new Error("Nama partner wajib diisi");
+      if (!buyerName.trim()) throw new Error("Nama pembeli wajib diisi");
+      if (!houseBlock.trim()) throw new Error("Blok rumah wajib diisi");
       if (payMethod === "cash" && Number(cashReceived) < total)
         throw new Error("Uang tunai kurang");
       const { data: u } = await supabase.auth.getUser();
@@ -206,6 +210,8 @@ function TransactionPage() {
           cashier_id: u.user?.id,
           sale_category: saleCategory,
           partner_name: saleCategory === "partner" ? partnerName.trim() : null,
+          buyer_name: buyerName.trim(),
+          house_block: houseBlock.trim(),
         })
         .select()
         .single();
@@ -239,6 +245,8 @@ function TransactionPage() {
       setCart([]);
       setCashReceived("");
       setPartnerName("");
+      setBuyerName("");
+      setHouseBlock("");
       qc.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -480,6 +488,28 @@ function TransactionPage() {
               </div>
             </div>
           )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="buyer-name">Nama Pembeli</Label>
+              <Input
+                id="buyer-name"
+                value={buyerName}
+                onChange={(event) => setBuyerName(event.target.value)}
+                placeholder="Nama pembeli"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="house-block">Blok Rumah</Label>
+              <Input
+                id="house-block"
+                value={houseBlock}
+                onChange={(event) => setHouseBlock(event.target.value)}
+                placeholder="Contoh: Blok A1"
+                required
+              />
+            </div>
+          </div>
           <Tabs value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
             <TabsList className="grid grid-cols-2">
               <TabsTrigger value="cash">
