@@ -552,7 +552,7 @@ function TransactionPage() {
               className="flex-1"
               onClick={() => {
                 try {
-                  printReceiptPdf(lastTx, settings);
+                  printReceiptPdf(lastTx, settings ?? null);
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : "Gagal membuka PDF");
                 }
@@ -565,7 +565,7 @@ function TransactionPage() {
               className="flex-1 bg-success text-success-foreground hover:bg-success/90"
               onClick={async () => {
                 try {
-                  await shareReceiptPdf(lastTx, settings);
+                  await shareReceiptPdf(lastTx, settings ?? null);
                 } catch (error) {
                   toast.info(
                     error instanceof Error ? error.message : "Tidak dapat membagikan PDF",
