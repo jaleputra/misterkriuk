@@ -304,10 +304,12 @@ export type Database = {
       }
       transactions: {
         Row: {
+          buyer_name: string | null
           cash_received: number | null
           cashier_id: string | null
           change_amount: number | null
           created_at: string
+          house_block: string | null
           id: string
           partner_name: string | null
           payment_method: string
@@ -315,10 +317,12 @@ export type Database = {
           total: number
         }
         Insert: {
+          buyer_name?: string | null
           cash_received?: number | null
           cashier_id?: string | null
           change_amount?: number | null
           created_at?: string
+          house_block?: string | null
           id?: string
           partner_name?: string | null
           payment_method: string
@@ -326,10 +330,12 @@ export type Database = {
           total: number
         }
         Update: {
+          buyer_name?: string | null
           cash_received?: number | null
           cashier_id?: string | null
           change_amount?: number | null
           created_at?: string
+          house_block?: string | null
           id?: string
           partner_name?: string | null
           payment_method?: string
