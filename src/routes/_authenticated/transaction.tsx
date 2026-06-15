@@ -38,6 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { printReceiptPdf, shareReceiptPdf } from "@/lib/receipt-pdf.client";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
@@ -546,65 +547,38 @@ function TransactionPage() {
           </DialogHeader>
           {lastTx && <Receipt tx={lastTx} settings={settings} />}
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => printReceipt()}>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                try {
+                  printReceiptPdf(lastTx, settings);
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Gagal membuka PDF");
+                }
+              }}
+            >
               <Printer className="h-4 w-4 mr-2" />
-              Cetak
+              Cetak PDF
             </Button>
             <Button
               className="flex-1 bg-success text-success-foreground hover:bg-success/90"
-              onClick={() => shareWA(lastTx, settings)}
+              onClick={async () => {
+                try {
+                  await shareReceiptPdf(lastTx, settings);
+                } catch (error) {
+                  toast.info(
+                    error instanceof Error ? error.message : "Tidak dapat membagikan PDF",
+                  );
+                }
+              }}
             >
               <Share2 className="h-4 w-4 mr-2" />
-              WhatsApp
+              Bagikan PDF
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
-}
-
-function printReceipt() {
-  const node = document.getElementById("receipt-print");
-  if (!node) return;
-  const w = window.open("", "_blank", "width=300,height=600");
-  if (!w) return;
-  w.document.write(`<html><head><title>Struk</title>
-    <style>body{font-family:monospace;font-size:12px;padding:8px;width:280px}
-    .center{text-align:center}.row{display:flex;justify-content:space-between}
-    hr{border:none;border-top:1px dashed #000;margin:6px 0}</style>
-    </head><body>${node.innerHTML}</body></html>`);
-  w.document.close();
-  setTimeout(() => {
-    w.print();
-    w.close();
-  }, 250);
-}
-
-function shareWA(tx: any, settings: any) {
-  const lines: string[] = [];
-  lines.push(`*${settings?.shop_name ?? "AMI Fried Chicken"}*`);
-  lines.push(`Struk: ${tx.id.slice(0, 8).toUpperCase()}`);
-  lines.push(`${new Date(tx.created_at).toLocaleString("id-ID")}`);
-  if (tx.sale_category === "partner" && tx.partner_name) lines.push(`Partner: ${tx.partner_name}`);
-  lines.push("--------------------");
-  tx.items.forEach((i: any) => {
-    lines.push(`${i.product_name}`);
-    lines.push(`  ${i.quantity} x ${rupiah(i.price)} = ${rupiah(i.subtotal)}`);
-  });
-  lines.push("--------------------");
-  lines.push(`*Total: ${rupiah(tx.total)}*`);
-  lines.push(`Bayar: ${tx.payment_method.toUpperCase()}`);
-  if (tx.payment_method === "cash") {
-    lines.push(`Tunai: ${rupiah(tx.cash_received)}`);
-    lines.push(`Kembali: ${rupiah(tx.change_amount)}`);
-  }
-  lines.push(
-    tx.sale_category === "partner"
-      ? `\nTerima kasih ${tx.partner_name ?? "Partner"} dari Stockist Cileungsi 🙏`
-      : "\nTerima kasih 🙏",
-  );
-  const msg = encodeURIComponent(lines.join("\n"));
-  const phone = settings?.whatsapp_number ? settings.whatsapp_number.replace(/\D/g, "") : "";
-  window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
 }
