@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { printReceiptPdf, shareReceiptPdf } from "@/lib/receipt-pdf.client";
+import type { ReceiptPdfTransaction } from "@/lib/receipt-pdf.client";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
@@ -56,6 +57,14 @@ type Product = {
   costPrice?: number;
 };
 type CartItem = { product: Product; qty: number };
+type EventItem = { product_id: string; adjustment_type: string; adjustment_value: number };
+
+const applyAdjustment = (price: number, type: string, value: number) => {
+  if (type === "percent_discount") return Math.max(0, Math.round(price * (1 - value / 100)));
+  if (type === "fixed_discount") return Math.max(0, price - value);
+  if (type === "set_price") return Math.max(0, value);
+  return price;
+};
 
 function TransactionPage() {
   const qc = useQueryClient();
@@ -106,19 +115,13 @@ function TransactionPage() {
     },
   });
 
-  const applyAdj = (price: number, type: string, value: number) => {
-    if (type === "percent_discount") return Math.max(0, Math.round(price * (1 - value / 100)));
-    if (type === "fixed_discount") return Math.max(0, price - value);
-    if (type === "set_price") return Math.max(0, value);
-    return price;
-  };
-  const applyEvent = (price: number, productId: string) => {
+  const applyEvent = useCallback((price: number, productId: string) => {
     if (!activeEvent) return price;
-    const override = eventItems.find((it: any) => it.product_id === productId);
+    const override = (eventItems as EventItem[]).find((item) => item.product_id === productId);
     if (override)
-      return applyAdj(price, override.adjustment_type, Number(override.adjustment_value));
-    return applyAdj(price, activeEvent.adjustment_type, Number(activeEvent.adjustment_value));
-  };
+      return applyAdjustment(price, override.adjustment_type, Number(override.adjustment_value));
+    return applyAdjustment(price, activeEvent.adjustment_type, Number(activeEvent.adjustment_value));
+  }, [activeEvent, eventItems]);
 
   const products = useMemo(
     () =>
@@ -128,7 +131,7 @@ function TransactionPage() {
         price: applyEvent(Number(p.price), p.id),
         costPrice: Number(stockCosts.find((cost) => cost.product_id === p.id)?.initial_price ?? 0),
       })),
-    [rawProducts, activeEvent, eventItems, stockCosts],
+    [rawProducts, applyEvent, stockCosts],
   );
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -142,7 +145,7 @@ function TransactionPage() {
   const [buyerName, setBuyerName] = useState("");
   const [houseBlock, setHouseBlock] = useState("");
   const [search, setSearch] = useState("");
-  const [lastTx, setLastTx] = useState<any>(null);
+  const [lastTx, setLastTx] = useState<ReceiptPdfTransaction | null>(null);
 
   const visibleProducts = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("id-ID");
@@ -510,7 +513,10 @@ function TransactionPage() {
               />
             </div>
           </div>
-          <Tabs value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
+          <Tabs
+            value={payMethod}
+            onValueChange={(value) => setPayMethod(value === "qris" ? "qris" : "cash")}
+          >
             <TabsList className="grid grid-cols-2">
               <TabsTrigger value="cash">
                 <Banknote className="h-4 w-4 mr-2" />
