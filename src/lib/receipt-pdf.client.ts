@@ -113,10 +113,7 @@ export function printReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfS
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export async function shareReceiptPdf(
-  tx: ReceiptPdfTransaction,
-  settings: ReceiptPdfSettings,
-) {
+export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
   const { pdf, fileName } = createReceiptPdf(tx, settings);
   const file = new File([pdf.output("blob")], fileName, { type: "application/pdf" });
   const shareData: ShareData = {

@@ -567,9 +567,7 @@ function TransactionPage() {
                 try {
                   await shareReceiptPdf(lastTx, settings ?? null);
                 } catch (error) {
-                  toast.info(
-                    error instanceof Error ? error.message : "Tidak dapat membagikan PDF",
-                  );
+                  toast.info(error instanceof Error ? error.message : "Tidak dapat membagikan PDF");
                 }
               }}
             >
