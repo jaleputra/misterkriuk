@@ -587,6 +587,7 @@ function TransactionPage() {
               variant="outline"
               className="flex-1"
               onClick={() => {
+                if (!lastTx) return;
                 try {
                   printReceiptPdf(lastTx, settings ?? null);
                 } catch (error) {
@@ -600,6 +601,7 @@ function TransactionPage() {
             <Button
               className="flex-1 bg-success text-success-foreground hover:bg-success/90"
               onClick={async () => {
+                if (!lastTx) return;
                 try {
                   await shareReceiptPdf(lastTx, settings ?? null);
                 } catch (error) {
