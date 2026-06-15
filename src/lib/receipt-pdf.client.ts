@@ -1,0 +1,132 @@
+import { jsPDF } from "jspdf";
+import { rupiah } from "@/lib/format";
+
+export type ReceiptPdfTransaction = {
+  id: string;
+  created_at: string;
+  total: number | string;
+  payment_method: string;
+  cash_received: number | string | null;
+  change_amount: number | string | null;
+  sale_category?: string;
+  partner_name?: string | null;
+  items: { product_name: string; price: number; quantity: number; subtotal: number }[];
+};
+
+export type ReceiptPdfSettings = {
+  shop_name?: string | null;
+  shop_address?: string | null;
+  shop_phone?: string | null;
+} | null;
+
+const RECEIPT_WIDTH_MM = 80;
+const CONTENT_WIDTH_MM = 72;
+const LEFT_MM = 4;
+
+function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
+  const addressLines = settings?.shop_address
+    ? Math.max(1, Math.ceil(settings.shop_address.length / 40))
+    : 0;
+  const partnerLines = tx.sale_category === "partner" && tx.partner_name ? 1 : 0;
+  return Math.max(100, 77 + addressLines * 4 + partnerLines * 4 + tx.items.length * 10);
+}
+
+function safeFileName(tx: ReceiptPdfTransaction) {
+  return `struk-${tx.id.slice(0, 8).toUpperCase()}.pdf`;
+}
+
+export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
+  const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: [RECEIPT_WIDTH_MM, receiptHeight(tx, settings)],
+    compress: true,
+  });
+  let y = 7;
+  const center = RECEIPT_WIDTH_MM / 2;
+  const right = RECEIPT_WIDTH_MM - LEFT_MM;
+
+  const centerText = (text: string, size = 8, bold = false) => {
+    pdf.setFont("courier", bold ? "bold" : "normal");
+    pdf.setFontSize(size);
+    const lines = pdf.splitTextToSize(text, CONTENT_WIDTH_MM) as string[];
+    pdf.text(lines, center, y, { align: "center" });
+    y += lines.length * 4;
+  };
+  const row = (left: string, rightText: string, bold = false) => {
+    pdf.setFont("courier", bold ? "bold" : "normal");
+    pdf.setFontSize(8);
+    pdf.text(left, LEFT_MM, y);
+    pdf.text(rightText, right, y, { align: "right" });
+    y += 4;
+  };
+  const divider = () => {
+    pdf.setLineDashPattern([1, 1], 0);
+    pdf.line(LEFT_MM, y, right, y);
+    y += 4;
+  };
+
+  centerText(settings?.shop_name ?? "AMI Fried Chicken", 10, true);
+  if (settings?.shop_address) centerText(settings.shop_address);
+  if (settings?.shop_phone) centerText(settings.shop_phone);
+  divider();
+  row("No.", tx.id.slice(0, 8).toUpperCase());
+  row("Tanggal", new Date(tx.created_at).toLocaleString("id-ID"));
+  if (tx.sale_category === "partner" && tx.partner_name) row("Partner", tx.partner_name);
+  divider();
+
+  tx.items.forEach((item) => {
+    pdf.setFont("courier", "normal");
+    pdf.setFontSize(8);
+    const nameLines = pdf.splitTextToSize(item.product_name, CONTENT_WIDTH_MM) as string[];
+    pdf.text(nameLines, LEFT_MM, y);
+    y += nameLines.length * 4;
+    row(`${item.quantity} x ${rupiah(item.price)}`, rupiah(item.subtotal));
+    y += 1;
+  });
+
+  divider();
+  row("TOTAL", rupiah(tx.total), true);
+  row("Bayar", tx.payment_method.toUpperCase());
+  if (tx.payment_method === "cash") {
+    row("Tunai", rupiah(tx.cash_received ?? 0));
+    row("Kembalian", rupiah(tx.change_amount ?? 0));
+  }
+  divider();
+  centerText(
+    tx.sale_category === "partner"
+      ? `Terima kasih ${tx.partner_name ?? "Partner"} dari Stockist Cileungsi`
+      : "Terima kasih",
+  );
+
+  return { pdf, fileName: safeFileName(tx) };
+}
+
+export function printReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
+  const { pdf } = createReceiptPdf(tx, settings);
+  const url = URL.createObjectURL(pdf.output("blob"));
+  const printWindow = window.open(url, "_blank");
+  if (!printWindow) {
+    URL.revokeObjectURL(url);
+    throw new Error("Izinkan pop-up untuk mencetak struk PDF");
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
+  const { pdf, fileName } = createReceiptPdf(tx, settings);
+  const file = new File([pdf.output("blob")], fileName, { type: "application/pdf" });
+  const shareData: ShareData = {
+    title: `Struk ${tx.id.slice(0, 8).toUpperCase()}`,
+    text: `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"}`,
+    files: [file],
+  };
+
+  if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+    await navigator.share(shareData);
+    return;
+  }
+
+  pdf.save(fileName);
+  throw new Error("PDF telah diunduh. Lampirkan file tersebut melalui WhatsApp.");
+}
