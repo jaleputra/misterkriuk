@@ -115,13 +115,22 @@ function TransactionPage() {
     },
   });
 
-  const applyEvent = useCallback((price: number, productId: string) => {
-    if (!activeEvent) return price;
-    const override = (eventItems as EventItem[]).find((item) => item.product_id === productId);
-    if (override)
-      return applyAdjustment(price, override.adjustment_type, Number(override.adjustment_value));
-    return applyAdjustment(price, activeEvent.adjustment_type, Number(activeEvent.adjustment_value));
-  }, [activeEvent, eventItems]);
+  const applyEvent = useCallback(
+    (price: number, productId: string) => {
+      if (!activeEvent) return price;
+      const override = (eventItems as EventItem[]).find(
+        (item) => item.product_id === productId,
+      );
+      if (override)
+        return applyAdjustment(price, override.adjustment_type, Number(override.adjustment_value));
+      return applyAdjustment(
+        price,
+        activeEvent.adjustment_type,
+        Number(activeEvent.adjustment_value),
+      );
+    },
+    [activeEvent, eventItems],
+  );
 
   const products = useMemo(
     () =>
