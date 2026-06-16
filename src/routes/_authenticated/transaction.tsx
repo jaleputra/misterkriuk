@@ -206,8 +206,7 @@ function TransactionPage() {
       if (cart.length === 0) throw new Error("Keranjang kosong");
       if (saleCategory === "partner" && !partnerName.trim())
         throw new Error("Nama partner wajib diisi");
-      if (!buyerName.trim()) throw new Error("Nama pembeli wajib diisi");
-      if (!houseBlock.trim()) throw new Error("Blok rumah wajib diisi");
+      // buyer_name & house_block are optional
       if (payMethod === "cash" && Number(cashReceived) < total)
         throw new Error("Uang tunai kurang");
       const { data: u } = await supabase.auth.getUser();
