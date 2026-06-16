@@ -4,7 +4,19 @@
 // 00002af1-0000-1000-8000-00805f9b34fb. Falls back by scanning writable
 // characteristics on the primary service if the well-known UUID is missing.
 
-import { rupiah } from "@/lib/format";
+// Plain ASCII rupiah formatter for thermal printer (avoids non-breaking
+// space and currency symbols that some printers render as garbage glyphs).
+const rp = (n: number | string | null | undefined) => {
+  const v = Math.round(Number(n ?? 0));
+  const sign = v < 0 ? "-" : "";
+  const digits = Math.abs(v).toString();
+  let out = "";
+  for (let i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) out += ".";
+    out += digits[i];
+  }
+  return `${sign}Rp${out}`;
+};
 
 const SERVICE_UUID = "000018f0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID = "00002af1-0000-1000-8000-00805f9b34fb";
