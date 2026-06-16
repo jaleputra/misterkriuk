@@ -13,6 +13,14 @@ import { toast } from "sonner";
 import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { rupiah } from "@/lib/format";
+import {
+  connectPrinter,
+  disconnectPrinter,
+  isBluetoothSupported,
+  isPrinterConnected,
+  subscribePrinter,
+  testPrint,
+} from "@/lib/thermal-printer.client";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   ssr: false,
