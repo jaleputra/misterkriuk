@@ -79,7 +79,10 @@ export function Receipt({ tx, settings }: ReceiptProps) {
       )}
       <hr className="border-t border-dashed border-black my-2" />
       <div className="center text-center">
-        Terima kasih {tx.buyer_name ?? "Pembeli"} {tx.house_block ?? ""} 🙏
+        <div>Terima kasih 🙏</div>
+        {(tx.buyer_name || tx.house_block) && (
+          <div>{[tx.buyer_name, tx.house_block].filter(Boolean).join(" ")}</div>
+        )}
       </div>
     </div>
   );
