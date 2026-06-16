@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { printReceiptPdf, shareReceiptPdf } from "@/lib/receipt-pdf.client";
 import type { ReceiptPdfTransaction } from "@/lib/receipt-pdf.client";
+import { isPrinterConnected, printReceiptThermal } from "@/lib/thermal-printer.client";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
