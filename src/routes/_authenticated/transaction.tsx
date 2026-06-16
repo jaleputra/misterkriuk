@@ -500,23 +500,21 @@ function TransactionPage() {
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="buyer-name">Nama Pembeli</Label>
+              <Label htmlFor="buyer-name">Nama Pembeli (opsional)</Label>
               <Input
                 id="buyer-name"
                 value={buyerName}
                 onChange={(event) => setBuyerName(event.target.value)}
                 placeholder="Nama pembeli"
-                required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="house-block">Blok Rumah</Label>
+              <Label htmlFor="house-block">Blok Rumah (opsional)</Label>
               <Input
                 id="house-block"
                 value={houseBlock}
                 onChange={(event) => setHouseBlock(event.target.value)}
                 placeholder="Contoh: Blok A1"
-                required
               />
             </div>
           </div>
