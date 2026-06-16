@@ -591,17 +591,22 @@ function TransactionPage() {
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => {
+              onClick={async () => {
                 if (!lastTx) return;
                 try {
-                  printReceiptPdf(lastTx, settings ?? null);
+                  if (isPrinterConnected()) {
+                    await printReceiptThermal(lastTx, settings ?? null);
+                    toast.success("Struk dicetak");
+                  } else {
+                    printReceiptPdf(lastTx, settings ?? null);
+                  }
                 } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Gagal membuka PDF");
+                  toast.error(error instanceof Error ? error.message : "Gagal mencetak");
                 }
               }}
             >
               <Printer className="h-4 w-4 mr-2" />
-              Cetak PDF
+              {isPrinterConnected() ? "Cetak" : "Cetak PDF"}
             </Button>
             <Button
               className="flex-1 bg-success text-success-foreground hover:bg-success/90"
