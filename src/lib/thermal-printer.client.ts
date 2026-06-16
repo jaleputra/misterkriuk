@@ -251,8 +251,11 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(cmd.alignCenter);
-  const thanks = `Terima kasih ${tx.buyer_name ?? "Pembeli"} ${tx.house_block ?? ""}`.trim();
-  for (const l of wrap(thanks, width)) parts.push(enc.encode(l + "\n"));
+  parts.push(enc.encode("Terima kasih\n"));
+  const buyerLine = [tx.buyer_name, tx.house_block].filter((v) => v && String(v).trim()).join(" ");
+  if (buyerLine) {
+    for (const l of wrap(buyerLine, width)) parts.push(enc.encode(l + "\n"));
+  }
   parts.push(cmd.feed(3));
   parts.push(cmd.cut);
   return concat(parts);
