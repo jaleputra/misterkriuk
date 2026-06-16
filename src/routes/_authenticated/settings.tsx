@@ -246,8 +246,24 @@ function SettingsPage() {
                 </Select>
               </div>
             </div>
-            <Button variant="outline" onClick={connectPrinter}>Sambungkan Printer Bluetooth</Button>
-            <p className="text-xs text-muted-foreground">Untuk mencetak struk, gunakan tombol "Cetak" di akhir transaksi. Browser akan membuka jendela cetak.</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {printerConnected ? (
+                <Button variant="destructive" onClick={handleDisconnectPrinter} disabled={printerBusy}>
+                  Putuskan Printer
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={handleConnectPrinter} disabled={printerBusy}>
+                  Sambungkan Printer Bluetooth
+                </Button>
+              )}
+              <Button variant="secondary" onClick={handleTestPrint} disabled={!printerConnected || printerBusy}>
+                Test Printer
+              </Button>
+              <span className={`text-xs px-2 py-1 rounded-md ${printerConnected ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+                {printerConnected ? "Terhubung" : "Tidak terhubung"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">Aktifkan Bluetooth lalu sambungkan printer thermal. Saat checkout, tombol "Cetak" akan langsung mengirim struk ke printer.</p>
           </CardContent>
         </Card>
 
