@@ -13,6 +13,14 @@ import { toast } from "sonner";
 import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { rupiah } from "@/lib/format";
+import {
+  connectPrinter,
+  disconnectPrinter,
+  isBluetoothSupported,
+  isPrinterConnected,
+  subscribePrinter,
+  testPrint,
+} from "@/lib/thermal-printer.client";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   ssr: false,
@@ -51,15 +59,44 @@ function SettingsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const connectPrinter = async () => {
-    const nav = navigator as any;
-    if (!nav.bluetooth) { toast.error("Browser tidak mendukung Web Bluetooth"); return; }
+  const [printerConnected, setPrinterConnected] = useState(false);
+  const [printerBusy, setPrinterBusy] = useState(false);
+  useEffect(() => {
+    setPrinterConnected(isPrinterConnected());
+    return subscribePrinter(() => setPrinterConnected(isPrinterConnected()));
+  }, []);
+
+  const handleConnectPrinter = async () => {
+    if (!isBluetoothSupported()) { toast.error("Browser tidak mendukung Web Bluetooth"); return; }
+    setPrinterBusy(true);
     try {
-      const device = await nav.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ["000018f0-0000-1000-8000-00805f9b34fb"] });
-      setForm({ ...form, printer_name: device.name ?? "Thermal Printer" });
-      toast.success(`Terhubung: ${device.name ?? "Printer"}`);
-    } catch (e: any) {
-      toast.error(e.message ?? "Gagal terhubung");
+      const { name } = await connectPrinter();
+      setForm((f) => ({ ...f, printer_name: name }));
+      toast.success(`Terhubung: ${name}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal terhubung");
+    } finally {
+      setPrinterBusy(false);
+    }
+  };
+  const handleDisconnectPrinter = () => {
+    disconnectPrinter();
+    toast.info("Printer diputus");
+  };
+  const handleTestPrint = async () => {
+    setPrinterBusy(true);
+    try {
+      await testPrint({
+        shop_name: form.shop_name,
+        shop_address: form.shop_address,
+        shop_phone: form.shop_phone,
+        paper_width: form.paper_width,
+      });
+      toast.success("Test print terkirim");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal test print");
+    } finally {
+      setPrinterBusy(false);
     }
   };
 
@@ -209,8 +246,24 @@ function SettingsPage() {
                 </Select>
               </div>
             </div>
-            <Button variant="outline" onClick={connectPrinter}>Sambungkan Printer Bluetooth</Button>
-            <p className="text-xs text-muted-foreground">Untuk mencetak struk, gunakan tombol "Cetak" di akhir transaksi. Browser akan membuka jendela cetak.</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {printerConnected ? (
+                <Button variant="destructive" onClick={handleDisconnectPrinter} disabled={printerBusy}>
+                  Putuskan Printer
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={handleConnectPrinter} disabled={printerBusy}>
+                  Sambungkan Printer Bluetooth
+                </Button>
+              )}
+              <Button variant="secondary" onClick={handleTestPrint} disabled={!printerConnected || printerBusy}>
+                Test Printer
+              </Button>
+              <span className={`text-xs px-2 py-1 rounded-md ${printerConnected ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+                {printerConnected ? "Terhubung" : "Tidak terhubung"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">Aktifkan Bluetooth lalu sambungkan printer thermal. Saat checkout, tombol "Cetak" akan langsung mengirim struk ke printer.</p>
           </CardContent>
         </Card>
 

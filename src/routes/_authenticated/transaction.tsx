@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { printReceiptPdf, shareReceiptPdf } from "@/lib/receipt-pdf.client";
 import type { ReceiptPdfTransaction } from "@/lib/receipt-pdf.client";
+import { isPrinterConnected, printReceiptThermal } from "@/lib/thermal-printer.client";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
@@ -205,8 +206,7 @@ function TransactionPage() {
       if (cart.length === 0) throw new Error("Keranjang kosong");
       if (saleCategory === "partner" && !partnerName.trim())
         throw new Error("Nama partner wajib diisi");
-      if (!buyerName.trim()) throw new Error("Nama pembeli wajib diisi");
-      if (!houseBlock.trim()) throw new Error("Blok rumah wajib diisi");
+      // buyer_name & house_block are optional
       if (payMethod === "cash" && Number(cashReceived) < total)
         throw new Error("Uang tunai kurang");
       const { data: u } = await supabase.auth.getUser();
@@ -220,8 +220,8 @@ function TransactionPage() {
           cashier_id: u.user?.id,
           sale_category: saleCategory,
           partner_name: saleCategory === "partner" ? partnerName.trim() : null,
-          buyer_name: buyerName.trim(),
-          house_block: houseBlock.trim(),
+          buyer_name: buyerName.trim() || null,
+          house_block: houseBlock.trim() || null,
         })
         .select()
         .single();
@@ -500,23 +500,21 @@ function TransactionPage() {
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="buyer-name">Nama Pembeli</Label>
+              <Label htmlFor="buyer-name">Nama Pembeli (opsional)</Label>
               <Input
                 id="buyer-name"
                 value={buyerName}
                 onChange={(event) => setBuyerName(event.target.value)}
                 placeholder="Nama pembeli"
-                required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="house-block">Blok Rumah</Label>
+              <Label htmlFor="house-block">Blok Rumah (opsional)</Label>
               <Input
                 id="house-block"
                 value={houseBlock}
                 onChange={(event) => setHouseBlock(event.target.value)}
                 placeholder="Contoh: Blok A1"
-                required
               />
             </div>
           </div>
@@ -593,17 +591,22 @@ function TransactionPage() {
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => {
+              onClick={async () => {
                 if (!lastTx) return;
                 try {
-                  printReceiptPdf(lastTx, settings ?? null);
+                  if (isPrinterConnected()) {
+                    await printReceiptThermal(lastTx, settings ?? null);
+                    toast.success("Struk dicetak");
+                  } else {
+                    printReceiptPdf(lastTx, settings ?? null);
+                  }
                 } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Gagal membuka PDF");
+                  toast.error(error instanceof Error ? error.message : "Gagal mencetak");
                 }
               }}
             >
               <Printer className="h-4 w-4 mr-2" />
-              Cetak PDF
+              {isPrinterConnected() ? "Cetak" : "Cetak PDF"}
             </Button>
             <Button
               className="flex-1 bg-success text-success-foreground hover:bg-success/90"
