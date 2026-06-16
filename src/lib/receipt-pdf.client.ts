@@ -95,9 +95,7 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
     row("Kembalian", rupiah(tx.change_amount ?? 0));
   }
   divider();
-  centerText("Terima kasih");
-  const buyerLine = [tx.buyer_name, tx.house_block].filter((v) => v && String(v).trim()).join(" ");
-  if (buyerLine) centerText(buyerLine);
+  centerText(`Terima kasih ${tx.buyer_name ?? "Pembeli"} ${tx.house_block ?? ""}`.trim());
 
   return { pdf, fileName: safeFileName(tx) };
 }

@@ -4,19 +4,7 @@
 // 00002af1-0000-1000-8000-00805f9b34fb. Falls back by scanning writable
 // characteristics on the primary service if the well-known UUID is missing.
 
-// Plain ASCII rupiah formatter for thermal printer (avoids non-breaking
-// space and currency symbols that some printers render as garbage glyphs).
-const rp = (n: number | string | null | undefined) => {
-  const v = Math.round(Number(n ?? 0));
-  const sign = v < 0 ? "-" : "";
-  const digits = Math.abs(v).toString();
-  let out = "";
-  for (let i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 === 0) out += ".";
-    out += digits[i];
-  }
-  return `${sign}Rp${out}`;
-};
+import { rupiah } from "@/lib/format";
 
 const SERVICE_UUID = "000018f0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID = "00002af1-0000-1000-8000-00805f9b34fb";
@@ -236,26 +224,23 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
     for (const l of wrap(it.product_name, width)) parts.push(enc.encode(l + "\n"));
     parts.push(
       enc.encode(
-        lineBetween(`${it.quantity} x ${rp(it.price)}`, rp(it.subtotal), width) + "\n",
+        lineBetween(`${it.quantity} x ${rupiah(it.price)}`, rupiah(it.subtotal), width) + "\n",
       ),
     );
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(cmd.boldOn);
-  parts.push(enc.encode(lineBetween("TOTAL", rp(tx.total), width) + "\n"));
+  parts.push(enc.encode(lineBetween("TOTAL", rupiah(tx.total), width) + "\n"));
   parts.push(cmd.boldOff);
   parts.push(enc.encode(lineBetween("Bayar", tx.payment_method.toUpperCase(), width) + "\n"));
   if (tx.payment_method === "cash") {
-    parts.push(enc.encode(lineBetween("Tunai", rp(tx.cash_received ?? 0), width) + "\n"));
-    parts.push(enc.encode(lineBetween("Kembalian", rp(tx.change_amount ?? 0), width) + "\n"));
+    parts.push(enc.encode(lineBetween("Tunai", rupiah(tx.cash_received ?? 0), width) + "\n"));
+    parts.push(enc.encode(lineBetween("Kembalian", rupiah(tx.change_amount ?? 0), width) + "\n"));
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(cmd.alignCenter);
-  parts.push(enc.encode("Terima kasih\n"));
-  const buyerLine = [tx.buyer_name, tx.house_block].filter((v) => v && String(v).trim()).join(" ");
-  if (buyerLine) {
-    for (const l of wrap(buyerLine, width)) parts.push(enc.encode(l + "\n"));
-  }
+  const thanks = `Terima kasih ${tx.buyer_name ?? "Pembeli"} ${tx.house_block ?? ""}`.trim();
+  for (const l of wrap(thanks, width)) parts.push(enc.encode(l + "\n"));
   parts.push(cmd.feed(3));
   parts.push(cmd.cut);
   return concat(parts);
