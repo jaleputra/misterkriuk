@@ -236,18 +236,18 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
     for (const l of wrap(it.product_name, width)) parts.push(enc.encode(l + "\n"));
     parts.push(
       enc.encode(
-        lineBetween(`${it.quantity} x ${rupiah(it.price)}`, rupiah(it.subtotal), width) + "\n",
+        lineBetween(`${it.quantity} x ${rp(it.price)}`, rp(it.subtotal), width) + "\n",
       ),
     );
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(cmd.boldOn);
-  parts.push(enc.encode(lineBetween("TOTAL", rupiah(tx.total), width) + "\n"));
+  parts.push(enc.encode(lineBetween("TOTAL", rp(tx.total), width) + "\n"));
   parts.push(cmd.boldOff);
   parts.push(enc.encode(lineBetween("Bayar", tx.payment_method.toUpperCase(), width) + "\n"));
   if (tx.payment_method === "cash") {
-    parts.push(enc.encode(lineBetween("Tunai", rupiah(tx.cash_received ?? 0), width) + "\n"));
-    parts.push(enc.encode(lineBetween("Kembalian", rupiah(tx.change_amount ?? 0), width) + "\n"));
+    parts.push(enc.encode(lineBetween("Tunai", rp(tx.cash_received ?? 0), width) + "\n"));
+    parts.push(enc.encode(lineBetween("Kembalian", rp(tx.change_amount ?? 0), width) + "\n"));
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(cmd.alignCenter);
