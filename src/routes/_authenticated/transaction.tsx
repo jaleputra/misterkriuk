@@ -220,8 +220,8 @@ function TransactionPage() {
           cashier_id: u.user?.id,
           sale_category: saleCategory,
           partner_name: saleCategory === "partner" ? partnerName.trim() : null,
-          buyer_name: buyerName.trim(),
-          house_block: houseBlock.trim(),
+          buyer_name: buyerName.trim() || null,
+          house_block: houseBlock.trim() || null,
         })
         .select()
         .single();
