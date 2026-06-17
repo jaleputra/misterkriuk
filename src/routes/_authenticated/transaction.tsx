@@ -20,8 +20,6 @@ import {
   Minus,
   Trash2,
   ShoppingCart,
-  Printer,
-  Share2,
   X,
   Drumstick,
   Banknote,
@@ -30,6 +28,7 @@ import {
   Users,
 } from "lucide-react";
 import { Receipt } from "@/components/Receipt";
+import { ReceiptDialogFooter } from "@/components/ReceiptDialogFooter";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -38,9 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { printReceiptPdf, shareReceiptPdf } from "@/lib/receipt-pdf.client";
-import type { ReceiptPdfTransaction } from "@/lib/receipt-pdf.client";
-import { isPrinterConnected, printReceiptThermal } from "@/lib/thermal-printer.client";
+import type { ReceiptPdfTransaction } from "@/lib/receipt-pdf.types";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
@@ -588,40 +585,7 @@ function TransactionPage() {
           </DialogHeader>
           {lastTx && <Receipt tx={lastTx} settings={settings} />}
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={async () => {
-                if (!lastTx) return;
-                try {
-                  if (isPrinterConnected()) {
-                    await printReceiptThermal(lastTx, settings ?? null);
-                    toast.success("Struk dicetak");
-                  } else {
-                    printReceiptPdf(lastTx, settings ?? null);
-                  }
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Gagal mencetak");
-                }
-              }}
-            >
-              <Printer className="h-4 w-4 mr-2" />
-              {isPrinterConnected() ? "Cetak" : "Cetak PDF"}
-            </Button>
-            <Button
-              className="flex-1 bg-success text-success-foreground hover:bg-success/90"
-              onClick={async () => {
-                if (!lastTx) return;
-                try {
-                  await shareReceiptPdf(lastTx, settings ?? null);
-                } catch (error) {
-                  toast.info(error instanceof Error ? error.message : "Tidak dapat membagikan PDF");
-                }
-              }}
-            >
-              <Share2 className="h-4 w-4 mr-2" />
-              Bagikan PDF
-            </Button>
+            {lastTx && <ReceiptDialogFooter tx={lastTx} settings={settings ?? null} />}
           </DialogFooter>
         </DialogContent>
       </Dialog>

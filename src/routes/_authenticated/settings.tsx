@@ -14,13 +14,13 @@ import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, Chevron
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { rupiah } from "@/lib/format";
 import {
-  connectPrinter,
-  disconnectPrinter,
-  isBluetoothSupported,
-  isPrinterConnected,
-  subscribePrinter,
-  testPrint,
-} from "@/lib/thermal-printer.client";
+  connectPrinterClient,
+  disconnectPrinterClient,
+  isBluetoothSupportedClient,
+  isPrinterConnectedClient,
+  subscribePrinterClient,
+  testPrintClient,
+} from "@/lib/thermal-printer.actions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   ssr: false,
@@ -62,15 +62,18 @@ function SettingsPage() {
   const [printerConnected, setPrinterConnected] = useState(false);
   const [printerBusy, setPrinterBusy] = useState(false);
   useEffect(() => {
-    setPrinterConnected(isPrinterConnected());
-    return subscribePrinter(() => setPrinterConnected(isPrinterConnected()));
+    setPrinterConnected(isPrinterConnectedClient());
+    return subscribePrinterClient(() => setPrinterConnected(isPrinterConnectedClient()));
   }, []);
 
   const handleConnectPrinter = async () => {
-    if (!isBluetoothSupported()) { toast.error("Browser tidak mendukung Web Bluetooth"); return; }
+    if (!isBluetoothSupportedClient()) {
+      toast.error("Browser tidak mendukung Web Bluetooth");
+      return;
+    }
     setPrinterBusy(true);
     try {
-      const { name } = await connectPrinter();
+      const { name } = await connectPrinterClient();
       setForm((f) => ({ ...f, printer_name: name }));
       toast.success(`Terhubung: ${name}`);
     } catch (e) {
@@ -80,13 +83,13 @@ function SettingsPage() {
     }
   };
   const handleDisconnectPrinter = () => {
-    disconnectPrinter();
+    disconnectPrinterClient();
     toast.info("Printer diputus");
   };
   const handleTestPrint = async () => {
     setPrinterBusy(true);
     try {
-      await testPrint({
+      await testPrintClient({
         shop_name: form.shop_name,
         shop_address: form.shop_address,
         shop_phone: form.shop_phone,
