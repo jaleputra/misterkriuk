@@ -229,7 +229,6 @@ function TransactionPage() {
         .from("transactions")
         .insert({
           total,
-          discount_amount: discountAmount,
           payment_method: payMethod,
           cash_received: payMethod === "cash" ? Number(cashReceived) : null,
           change_amount: payMethod === "cash" ? change : null,
@@ -264,7 +263,7 @@ function TransactionPage() {
       return { tx, items };
     },
     onSuccess: async ({ tx, items }) => {
-      setLastTx({ ...tx, items });
+      setLastTx({ ...tx, discount_amount: discountAmount, items });
       setCheckoutOpen(false);
       setCartOpen(false);
       setReceiptOpen(true);
