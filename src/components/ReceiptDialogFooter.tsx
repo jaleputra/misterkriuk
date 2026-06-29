@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Printer, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ReceiptPdfSettings, ReceiptPdfTransaction } from "@/lib/receipt-pdf.types";
-import { printReceiptPdfClient, shareReceiptPdfClient } from "@/lib/receipt-pdf.actions";
+import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import {
   isPrinterConnectedClient,
   printReceiptThermalClient,
@@ -38,9 +38,9 @@ export function ReceiptDialogFooter({ tx, settings }: Props) {
 
   const handleShare = async () => {
     try {
-      await shareReceiptPdfClient(tx, settings);
+      await shareReceiptImageClient(tx, settings);
     } catch (error) {
-      toast.info(error instanceof Error ? error.message : "Tidak dapat membagikan PDF");
+      toast.error(error instanceof Error ? error.message : "Tidak dapat membagikan struk");
     }
   };
 
@@ -55,7 +55,7 @@ export function ReceiptDialogFooter({ tx, settings }: Props) {
         onClick={handleShare}
       >
         <Share2 className="h-4 w-4 mr-2" />
-        Bagikan PDF
+        Bagikan Struk
       </Button>
     </>
   );

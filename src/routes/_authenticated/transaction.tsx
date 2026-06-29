@@ -147,7 +147,7 @@ function TransactionPage() {
   const [cashReceived, setCashReceived] = useState("");
   const [saleCategory, setSaleCategory] = useState<"customer" | "partner">("customer");
   const [partnerName, setPartnerName] = useState("");
-  const [buyerName, setBuyerName] = useState("");
+  const [checkoutStep, setCheckoutStep] = useState<"block" | "payment">("block");
   const [houseBlock, setHouseBlock] = useState("");
   const [search, setSearch] = useState("");
   const [lastTx, setLastTx] = useState<ReceiptPdfTransaction | null>(null);
@@ -217,7 +217,7 @@ function TransactionPage() {
           cashier_id: u.user?.id,
           sale_category: saleCategory,
           partner_name: saleCategory === "partner" ? partnerName.trim() : null,
-          buyer_name: buyerName.trim() || null,
+          buyer_name: null,
           house_block: houseBlock.trim() || null,
         })
         .select()
@@ -252,7 +252,6 @@ function TransactionPage() {
       setCart([]);
       setCashReceived("");
       setPartnerName("");
-      setBuyerName("");
       setHouseBlock("");
       qc.invalidateQueries({ queryKey: ["products"] });
     },
@@ -302,7 +301,7 @@ function TransactionPage() {
           </span>
         </div>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
         {visibleProducts.map((p) => {
           const out = p.stock <= 0;
           return (
@@ -311,38 +310,38 @@ function TransactionPage() {
               onClick={() => addToCart(p)}
               disabled={out}
               className={[
-                "group relative text-left rounded-2xl border bg-card p-3 transition-all",
+                "group relative text-left rounded-xl border bg-card p-2 transition-all flex items-center gap-2",
                 out
                   ? "opacity-50 cursor-not-allowed"
-                  : "hover:border-primary hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98]",
+                  : "hover:border-primary hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]",
               ].join(" ")}
             >
-              <div className="aspect-square rounded-xl bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center mb-2 overflow-hidden">
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
                 {p.image_url ? (
                   <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                 ) : (
-                  <Drumstick className="h-10 w-10 text-primary/70" />
+                  <Drumstick className="h-5 w-5 text-primary/70" />
                 )}
               </div>
-              <div className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">
-                {p.name}
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <div className="flex flex-col leading-tight">
-                  <span className="text-primary font-bold text-sm">{rupiah(p.price)}</span>
-                  {activeEvent && p.originalPrice !== p.price && (
-                    <span className="text-[10px] text-muted-foreground line-through">
-                      {rupiah(p.originalPrice)}
-                    </span>
+              <div className="flex-1 min-w-0 flex flex-col justify-between h-10">
+                <div className="font-semibold text-xs leading-tight truncate">
+                  {p.name}
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-primary font-bold text-xs">{rupiah(p.price)}</span>
+                    {activeEvent && p.originalPrice !== p.price && (
+                      <span className="text-[8px] text-muted-foreground line-through">
+                        {rupiah(p.originalPrice)}
+                      </span>
+                    )}
+                  </div>
+                  {out ? (
+                    <span className="text-[8px] font-semibold text-destructive">Habis</span>
+                  ) : (
+                    <span className="text-[8px] text-muted-foreground">Stok {p.stock}</span>
                   )}
                 </div>
-                {out ? (
-                  <Badge variant="destructive" className="text-[10px]">
-                    Habis
-                  </Badge>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">Stok {p.stock}</span>
-                )}
               </div>
             </button>
           );
@@ -428,7 +427,10 @@ function TransactionPage() {
         <Button
           className="w-full h-12 text-base"
           disabled={cart.length === 0}
-          onClick={() => setCheckoutOpen(true)}
+          onClick={() => {
+            setCheckoutStep("block");
+            setCheckoutOpen(true);
+          }}
         >
           Checkout
         </Button>
@@ -472,108 +474,130 @@ function TransactionPage() {
       {/* Checkout */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Pembayaran</DialogTitle>
-          </DialogHeader>
-          <div className="text-center py-3">
-            <div className="text-xs text-muted-foreground">Total Tagihan</div>
-            <div className="text-3xl font-bold text-primary">{rupiah(total)}</div>
-          </div>
-          {saleCategory === "partner" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="partner-name">Nama Partner</Label>
-              <div className="relative">
-                <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="partner-name"
-                  value={partnerName}
-                  onChange={(event) => setPartnerName(event.target.value)}
-                  className="pl-9"
-                  placeholder="Masukkan nama partner"
-                  required
-                />
+          {checkoutStep === "block" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Informasi Pelanggan</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-3">
+                {saleCategory === "partner" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="partner-name">Nama Partner</Label>
+                    <div className="relative">
+                      <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="partner-name"
+                        value={partnerName}
+                        onChange={(event) => setPartnerName(event.target.value)}
+                        className="pl-9"
+                        placeholder="Masukkan nama partner"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="house-block">Blok Rumah (opsional)</Label>
+                  <Input
+                    id="house-block"
+                    value={houseBlock}
+                    onChange={(event) => setHouseBlock(event.target.value)}
+                    placeholder="Contoh: Blok A1"
+                  />
+                </div>
               </div>
-            </div>
+              <DialogFooter className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setCheckoutOpen(false)}>
+                  Batal
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    if (saleCategory === "partner" && !partnerName.trim()) {
+                      toast.warning("Nama partner wajib diisi");
+                      return;
+                    }
+                    setCheckoutStep("payment");
+                  }}
+                >
+                  Lanjut ke Pembayaran
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Pembayaran</DialogTitle>
+              </DialogHeader>
+              <div className="text-center py-3">
+                <div className="text-xs text-muted-foreground">Total Tagihan</div>
+                <div className="text-3xl font-bold text-primary">{rupiah(total)}</div>
+              </div>
+              <Tabs
+                value={payMethod}
+                onValueChange={(value) => setPayMethod(value === "qris" ? "qris" : "cash")}
+              >
+                <TabsList className="grid grid-cols-2">
+                  <TabsTrigger value="cash">
+                    <Banknote className="h-4 w-4 mr-2" />
+                    Cash
+                  </TabsTrigger>
+                  <TabsTrigger value="qris">
+                    <QrCode className="h-4 w-4 mr-2" />
+                    QRIS
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="cash" className="space-y-3 pt-3">
+                  <div>
+                    <label className="text-sm font-medium">Uang Diterima</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={cashReceived}
+                      onChange={(e) => setCashReceived(e.target.value)}
+                      className="text-lg font-semibold"
+                    />
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {[total, 50000, 100000, 200000].map((q, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setCashReceived(String(q))}
+                          className="px-3 py-1.5 rounded-md border text-xs hover:bg-accent"
+                        >
+                          {rupiah(q)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-success/10 border border-success/30">
+                    <span className="font-medium">Kembalian</span>
+                    <span className="text-xl font-bold text-success">{rupiah(change)}</span>
+                  </div>
+                </TabsContent>
+                <TabsContent value="qris" className="pt-3">
+                  <div className="aspect-square max-w-[220px] mx-auto rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/30 grid place-items-center border-2 border-dashed">
+                    <div className="text-center">
+                      <QrCode className="h-20 w-20 text-primary mx-auto" />
+                      <div className="text-xs mt-2 text-muted-foreground">Scan untuk membayar</div>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+              <DialogFooter className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setCheckoutStep("block")}>
+                  Kembali
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => checkout.mutate()}
+                  disabled={checkout.isPending}
+                >
+                  Bayar
+                </Button>
+              </DialogFooter>
+            </>
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="buyer-name">Nama Pembeli (opsional)</Label>
-              <Input
-                id="buyer-name"
-                value={buyerName}
-                onChange={(event) => setBuyerName(event.target.value)}
-                placeholder="Nama pembeli"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="house-block">Blok Rumah (opsional)</Label>
-              <Input
-                id="house-block"
-                value={houseBlock}
-                onChange={(event) => setHouseBlock(event.target.value)}
-                placeholder="Contoh: Blok A1"
-              />
-            </div>
-          </div>
-          <Tabs
-            value={payMethod}
-            onValueChange={(value) => setPayMethod(value === "qris" ? "qris" : "cash")}
-          >
-            <TabsList className="grid grid-cols-2">
-              <TabsTrigger value="cash">
-                <Banknote className="h-4 w-4 mr-2" />
-                Cash
-              </TabsTrigger>
-              <TabsTrigger value="qris">
-                <QrCode className="h-4 w-4 mr-2" />
-                QRIS
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="cash" className="space-y-3 pt-3">
-              <div>
-                <label className="text-sm font-medium">Uang Diterima</label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={cashReceived}
-                  onChange={(e) => setCashReceived(e.target.value)}
-                  className="text-lg font-semibold"
-                />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {[total, 50000, 100000, 200000].map((q, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setCashReceived(String(q))}
-                      className="px-3 py-1.5 rounded-md border text-xs hover:bg-accent"
-                    >
-                      {rupiah(q)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-success/10 border border-success/30">
-                <span className="font-medium">Kembalian</span>
-                <span className="text-xl font-bold text-success">{rupiah(change)}</span>
-              </div>
-            </TabsContent>
-            <TabsContent value="qris" className="pt-3">
-              <div className="aspect-square max-w-[220px] mx-auto rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/30 grid place-items-center border-2 border-dashed">
-                <div className="text-center">
-                  <QrCode className="h-20 w-20 text-primary mx-auto" />
-                  <div className="text-xs mt-2 text-muted-foreground">Scan untuk membayar</div>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCheckoutOpen(false)}>
-              Batal
-            </Button>
-            <Button onClick={() => checkout.mutate()} disabled={checkout.isPending}>
-              Bayar
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

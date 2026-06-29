@@ -5,5 +5,5 @@ export const rupiah = (n: number | string | null | undefined) => {
     currency: "IDR",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(v);
+  }).format(v).replace(/\s+/g, " ");
 };

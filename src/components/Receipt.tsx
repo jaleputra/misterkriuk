@@ -23,7 +23,7 @@ interface ReceiptProps {
 
 export function Receipt({ tx, settings }: ReceiptProps) {
   return (
-    <div id="receipt-print" className="font-mono text-xs bg-white text-black p-3 rounded-md border">
+    <div id="receipt-print" className="text-xs bg-white text-black p-3 rounded-md border">
       <div className="center text-center">
         <div className="font-bold text-sm">{settings?.shop_name ?? "AMI Fried Chicken"}</div>
         {settings?.shop_address && <div>{settings.shop_address}</div>}
@@ -79,7 +79,7 @@ export function Receipt({ tx, settings }: ReceiptProps) {
       )}
       <hr className="border-t border-dashed border-black my-2" />
       <div className="center text-center">
-        Terima kasih {tx.buyer_name ?? "Pembeli"} {tx.house_block ?? ""} 🙏
+        Terima kasih {tx.buyer_name ?? "Pelanggan"} {tx.house_block ? `Blok ${tx.house_block}` : ""} 🙏
       </div>
     </div>
   );
