@@ -186,6 +186,7 @@ type ReceiptTx = {
   id: string;
   created_at: string;
   total: number | string;
+  discount_amount?: number | string | null;
   payment_method: string;
   cash_received: number | string | null;
   change_amount: number | string | null;
@@ -229,6 +230,9 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
     );
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
+  if (tx.discount_amount && Number(tx.discount_amount) > 0) {
+    parts.push(enc.encode(lineBetween("Diskon", `-${rupiah(tx.discount_amount)}`, width) + "\n"));
+  }
   parts.push(cmd.boldOn);
   parts.push(enc.encode(lineBetween("TOTAL", rupiah(tx.total), width) + "\n"));
   parts.push(cmd.boldOff);

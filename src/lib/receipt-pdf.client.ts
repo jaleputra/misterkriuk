@@ -15,7 +15,8 @@ function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) 
     ? Math.max(1, Math.ceil(settings.shop_address.length / 40))
     : 0;
   const partnerLines = tx.sale_category === "partner" && tx.partner_name ? 1 : 0;
-  return Math.max(100, 77 + addressLines * 4 + partnerLines * 4 + tx.items.length * 10);
+  const discountLines = Number(tx.discount_amount) > 0 ? 1 : 0;
+  return Math.max(100, 77 + addressLines * 4 + partnerLines * 4 + discountLines * 4 + tx.items.length * 10);
 }
 
 function safeFileName(tx: ReceiptPdfTransaction) {
@@ -73,6 +74,9 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
   });
 
   divider();
+  if (Number(tx.discount_amount) > 0) {
+    row("Diskon", `-${rupiah(tx.discount_amount ?? 0)}`);
+  }
   row("TOTAL", rupiah(tx.total), true);
   row("Bayar", tx.payment_method.toUpperCase());
   if (tx.payment_method === "cash") {
@@ -133,6 +137,9 @@ function buildReceiptText(tx: ReceiptPdfTransaction, settings: ReceiptPdfSetting
   });
   
   text += `--------------------------------\n`;
+  if (Number(tx.discount_amount) > 0) {
+    text += `Diskon: -${rupiah(tx.discount_amount ?? 0)}\n`;
+  }
   text += `*TOTAL: ${rupiah(tx.total)}*\n`;
   text += `Bayar: ${tx.payment_method.toUpperCase()}\n`;
   if (tx.payment_method === "cash") {

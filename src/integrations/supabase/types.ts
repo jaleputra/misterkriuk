@@ -315,6 +315,7 @@ export type Database = {
           cashier_id: string | null
           change_amount: number | null
           created_at: string
+          discount_amount: number | null
           house_block: string | null
           id: string
           partner_name: string | null
@@ -328,6 +329,7 @@ export type Database = {
           cashier_id?: string | null
           change_amount?: number | null
           created_at?: string
+          discount_amount?: number | null
           house_block?: string | null
           id?: string
           partner_name?: string | null
@@ -341,6 +343,7 @@ export type Database = {
           cashier_id?: string | null
           change_amount?: number | null
           created_at?: string
+          discount_amount?: number | null
           house_block?: string | null
           id?: string
           partner_name?: string | null

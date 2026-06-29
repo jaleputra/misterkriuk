@@ -166,10 +166,23 @@ function TransactionPage() {
     );
   }, [products, saleCategory, search]);
 
-  const total = useMemo(
+  const [discountType, setDiscountType] = useState<"nominal" | "percent">("nominal");
+  const [discountValue, setDiscountValue] = useState("");
+
+  const subtotal = useMemo(
     () => cart.reduce((s, i) => s + Number(i.product.price) * i.qty, 0),
     [cart],
   );
+
+  const discountAmount = useMemo(() => {
+    const val = Number(discountValue) || 0;
+    if (discountType === "percent") {
+      return (subtotal * val) / 100;
+    }
+    return val;
+  }, [subtotal, discountType, discountValue]);
+
+  const total = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
   const cartCount = useMemo(() => cart.reduce((s, i) => s + i.qty, 0), [cart]);
   const change = Math.max(0, Number(cashReceived || 0) - total);
 
@@ -216,6 +229,7 @@ function TransactionPage() {
         .from("transactions")
         .insert({
           total,
+          discount_amount: discountAmount,
           payment_method: payMethod,
           cash_received: payMethod === "cash" ? Number(cashReceived) : null,
           change_amount: payMethod === "cash" ? change : null,
@@ -258,6 +272,7 @@ function TransactionPage() {
       setCashReceived("");
       setPartnerName("");
       setHouseBlock("");
+      setDiscountValue("");
       qc.invalidateQueries({ queryKey: ["products"] });
 
       if (isPrinterConnectedClient()) {
@@ -315,7 +330,7 @@ function TransactionPage() {
           </span>
         </div>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {visibleProducts.map((p) => {
           const out = p.stock <= 0;
           return (
@@ -324,36 +339,36 @@ function TransactionPage() {
               onClick={() => addToCart(p)}
               disabled={out}
               className={[
-                "group relative text-left rounded-xl border bg-card p-2.5 transition-all flex items-center gap-3",
+                "group relative text-left rounded-xl border bg-card p-4 transition-all flex items-center gap-4",
                 out
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:border-primary hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]",
               ].join(" ")}
             >
-              <div className="h-14 w-14 rounded-lg bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
+              <div className="h-16 w-16 rounded-lg bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
                 {p.image_url ? (
                   <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                 ) : (
-                  <Drumstick className="h-6 w-6 text-primary/70" />
+                  <Drumstick className="h-8 w-8 text-primary/70" />
                 )}
               </div>
-              <div className="flex-1 min-w-0 flex flex-col justify-between h-14">
-                <div className="font-semibold text-xs sm:text-sm leading-tight line-clamp-2">
+              <div className="flex-1 min-w-0 flex flex-col justify-between h-16">
+                <div className="font-semibold text-sm sm:text-base leading-tight line-clamp-2">
                   {p.name}
                 </div>
                 <div className="flex items-center justify-between mt-1">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-primary font-bold text-xs sm:text-sm">{rupiah(p.price)}</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-primary font-bold text-sm sm:text-base">{rupiah(p.price)}</span>
                     {activeEvent && p.originalPrice !== p.price && (
-                      <span className="text-[9px] text-muted-foreground line-through">
+                      <span className="text-[10px] text-muted-foreground line-through">
                         {rupiah(p.originalPrice)}
                       </span>
                     )}
                   </div>
                   {out ? (
-                    <span className="text-[9px] font-semibold text-destructive">Habis</span>
+                    <span className="text-xs font-semibold text-destructive">Habis</span>
                   ) : (
-                    <span className="text-[10px] text-muted-foreground">Stok {p.stock}</span>
+                    <span className="text-xs text-muted-foreground">Stok {p.stock}</span>
                   )}
                 </div>
               </div>
@@ -487,7 +502,7 @@ function TransactionPage() {
 
       {/* Checkout */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-        <DialogContent className="max-w-md top-[20%] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
+        <DialogContent className="max-w-md top-2 sm:top-1/2 translate-y-0 sm:-translate-y-1/2">
           {checkoutStep === "block" ? (
             <>
               <DialogHeader>
@@ -518,6 +533,41 @@ function TransactionPage() {
                     onChange={(event) => setHouseBlock(event.target.value)}
                     placeholder="Contoh: Blok A1"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Diskon (Opsional)</Label>
+                  <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder={discountType === "percent" ? "Persentase (%)" : "Nominal Potongan (Rp)"}
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                    />
+                    <Select
+                      value={discountType}
+                      onValueChange={(v) => {
+                        setDiscountType(v as "percent" | "nominal");
+                        setDiscountValue("");
+                      }}
+                    >
+                      <SelectTrigger className="w-[110px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nominal">Nominal</SelectItem>
+                        <SelectItem value="percent">Persen %</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {Number(discountValue) > 0 && (
+                    <div className="text-xs text-muted-foreground flex justify-between px-1">
+                      <span>Subtotal: {rupiah(subtotal)}</span>
+                      <span className="text-destructive font-semibold">
+                        Potongan: -{rupiah(discountAmount)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
               <DialogFooter className="flex gap-2">

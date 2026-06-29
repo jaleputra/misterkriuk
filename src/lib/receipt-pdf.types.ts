@@ -2,6 +2,7 @@ export type ReceiptPdfTransaction = {
   id: string;
   created_at: string;
   total: number | string;
+  discount_amount?: number | string | null;
   payment_method: string;
   cash_received: number | string | null;
   change_amount: number | string | null;

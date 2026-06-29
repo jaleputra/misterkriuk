@@ -5,6 +5,7 @@ interface ReceiptProps {
     id: string;
     created_at: string;
     total: number | string;
+    discount_amount?: number | string | null;
     payment_method: string;
     cash_received: number | string | null;
     change_amount: number | string | null;
@@ -57,6 +58,12 @@ export function Receipt({ tx, settings }: ReceiptProps) {
         </div>
       ))}
       <hr className="border-t border-dashed border-black my-2" />
+      {Number(tx.discount_amount) > 0 && (
+        <div className="row flex justify-between">
+          <span>Diskon</span>
+          <span className="font-semibold">-{rupiah(tx.discount_amount ?? 0)}</span>
+        </div>
+      )}
       <div className="row flex justify-between font-bold">
         <span>TOTAL</span>
         <span>{rupiah(tx.total)}</span>

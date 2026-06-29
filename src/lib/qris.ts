@@ -2,20 +2,21 @@
  * QRIS static-to-dynamic converter (EMVCo specification).
  * Parses static QRIS payload, inserts/replaces Tag 54 (amount),
  * and recalculates the CRC16 checksum at Tag 63.
+ * Sorts all tags in ascending order to prevent failures in strict payment apps.
  */
 
 export function generateDynamicQris(staticQris: string, amount: number): string {
   if (!staticQris) return "";
 
-  // 1. Remove the old CRC16 (last 4 characters after "6304")
   let qris = staticQris.trim();
-  if (qris.length < 4) return staticQris;
+  if (qris.length < 8) return staticQris;
+
+  // Remove the old CRC16 (last 4 characters after "6304")
   qris = qris.slice(0, -4);
 
-  // 2. Parse TLV (Tag-Length-Value) blocks and skip tag 54 (amount) if it exists,
-  // then rebuild everything up to tag 63.
+  // Parse all tags
+  const tags: { tag: string; lenVal: string; val: string }[] = [];
   let idx = 0;
-  let newQris = "";
   while (idx < qris.length) {
     const tag = qris.slice(idx, idx + 2);
     const lenVal = qris.slice(idx + 2, idx + 4);
@@ -23,30 +24,34 @@ export function generateDynamicQris(staticQris: string, amount: number): string 
     const val = qris.slice(idx + 4, idx + 4 + len);
 
     if (isNaN(len)) {
-      // Safety break for malformed payloads
       break;
     }
 
-    if (tag === "54") {
-      // Skip the old amount tag
-    } else if (tag === "63") {
-      // Reached the CRC tag
-      break;
-    } else {
-      newQris += tag + lenVal + val;
+    // Skip Tag 54 (amount) and Tag 63 (CRC) because we will generate/replace them
+    if (tag !== "54" && tag !== "63") {
+      tags.push({ tag, lenVal, val });
     }
     idx += 4 + len;
   }
 
-  // 3. Add the new amount tag 54
+  // Build new tag 54 (amount)
   const amtStr = Math.round(amount).toString();
-  const amtLen = amtStr.length.toString().padStart(2, "0");
-  newQris += "54" + amtLen + amtStr;
+  const amtLenVal = amtStr.length.toString().padStart(2, "0");
+  tags.push({ tag: "54", lenVal: amtLenVal, val: amtStr });
 
-  // 4. Add the CRC tag 6304
+  // Sort tags by tag number (ascending order is critical for strict apps like BCA/ShopeePay)
+  tags.sort((a, b) => parseInt(a.tag, 10) - parseInt(b.tag, 10));
+
+  // Rebuild the QRIS payload
+  let newQris = "";
+  for (const t of tags) {
+    newQris += t.tag + t.lenVal + t.val;
+  }
+
+  // Append tag 6304
   newQris += "6304";
 
-  // 5. Calculate CRC16 CCITT (false) of newQris
+  // Calculate CRC16 CCITT (false)
   const crc = crc16(newQris);
   const crcHex = crc.toString(16).toUpperCase().padStart(4, "0");
 
