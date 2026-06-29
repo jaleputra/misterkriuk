@@ -111,6 +111,42 @@ export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: Recei
   if (!whatsappWindow) throw new Error("Izinkan pop-up untuk membuka WhatsApp");
 }
 
+function buildReceiptText(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings): string {
+  const shopName = settings?.shop_name ?? "AMI Fried Chicken";
+  const shopAddress = settings?.shop_address ? `${settings.shop_address}\n` : "";
+  const shopPhone = settings?.shop_phone ? `${settings.shop_phone}\n` : "";
+  
+  let text = `*${shopName.toUpperCase()}*\n`;
+  if (shopAddress) text += `${shopAddress}`;
+  if (shopPhone) text += `${shopPhone}`;
+  text += `--------------------------------\n`;
+  text += `No: ${tx.id.slice(0, 8).toUpperCase()}\n`;
+  text += `Tanggal: ${new Date(tx.created_at).toLocaleString("id-ID")}\n`;
+  if (tx.sale_category === "partner" && tx.partner_name) {
+    text += `Partner: ${tx.partner_name}\n`;
+  }
+  text += `--------------------------------\n`;
+  
+  tx.items.forEach((item) => {
+    text += `*${item.product_name}*\n`;
+    text += `  ${item.quantity} x ${rupiah(item.price)} = ${rupiah(item.subtotal)}\n`;
+  });
+  
+  text += `--------------------------------\n`;
+  text += `*TOTAL: ${rupiah(tx.total)}*\n`;
+  text += `Bayar: ${tx.payment_method.toUpperCase()}\n`;
+  if (tx.payment_method === "cash") {
+    text += `Tunai: ${rupiah(tx.cash_received ?? 0)}\n`;
+    text += `Kembalian: ${rupiah(tx.change_amount ?? 0)}\n`;
+  }
+  text += `--------------------------------\n`;
+  text += `Terima kasih ${tx.buyer_name ?? "Pelanggan"}\n`;
+  if (tx.house_block) {
+    text += `*BLOK: ${tx.house_block.toUpperCase()}*\n`;
+  }
+  return text;
+}
+
 export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
   const element = document.getElementById("receipt-print");
   if (!element) {
@@ -144,10 +180,7 @@ export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: Rec
     }
 
     const fileName = `struk-${tx.id.slice(0, 8).toUpperCase()}.png`;
-    const file = new File([blob], fileName, { type: "image/png" });
-    const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
-    const messageText = `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? customerInfo}.`;
-
+    
     // Coba salin gambar ke clipboard agar kasir bisa langsung Paste (Ctrl+V) di chat WhatsApp
     try {
       if (navigator.clipboard && window.ClipboardItem) {
@@ -172,10 +205,9 @@ export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: Rec
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    // Otomatis buka WhatsApp dengan prefilled text
-    const whatsappText = encodeURIComponent(
-      `${messageText} Gambar struk sudah diunduh otomatis, silakan lampirkan/paste file ${fileName}.`
-    );
+    // Otomatis buka WhatsApp dengan rincian struk lengkap dalam bentuk teks
+    const receiptText = buildReceiptText(tx, settings);
+    const whatsappText = encodeURIComponent(receiptText);
     const whatsappUrl = `https://wa.me/?text=${whatsappText}`;
     const whatsappWindow = window.open(whatsappUrl, "_blank");
     if (!whatsappWindow) {

@@ -41,8 +41,8 @@ function WarehousePage() {
       ).data ?? [],
   });
 
-  type DraftLine = { product_id: string; quantity: string; initial_price: string };
-  const emptyLine = (): DraftLine => ({ product_id: "", quantity: "", initial_price: "" });
+  type DraftLine = { product_name: string; quantity: string; initial_price: string };
+  const emptyLine = (): DraftLine => ({ product_name: "", quantity: "", initial_price: "" });
   const [restockDate, setRestockDate] = useState(new Date().toISOString().slice(0, 10));
   const [shippingCost, setShippingCost] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
@@ -64,11 +64,47 @@ function WarehousePage() {
 
   const add = useMutation({
     mutationFn: async () => {
-      const validLines = lines.filter((line) => line.product_id && Number(line.quantity) > 0);
+      const validLines = lines.filter((line) => line.product_name.trim() && Number(line.quantity) > 0);
       if (validLines.length === 0) throw new Error("Tambahkan minimal satu produk");
-      if (new Set(validLines.map((line) => line.product_id)).size !== validLines.length)
-        throw new Error("Produk yang sama tidak boleh dipilih dua kali");
+      if (new Set(validLines.map((line) => line.product_name.trim().toLowerCase())).size !== validLines.length)
+        throw new Error("Produk yang sama tidak boleh dimasukkan dua kali");
       const { data: u } = await supabase.auth.getUser();
+
+      // Cari atau buat produk kategori "gudang" secara dinamis
+      const resolvedMovements = [];
+      for (const line of validLines) {
+        const nameClean = line.product_name.trim();
+        let { data: existingProd } = await supabase
+          .from("products")
+          .select("id")
+          .eq("name", nameClean)
+          .eq("category", "gudang")
+          .maybeSingle();
+
+        let prodId = existingProd?.id;
+        if (!prodId) {
+          const { data: newProd, error: newProdErr } = await supabase
+            .from("products")
+            .insert({
+              name: nameClean,
+              category: "gudang",
+              price: 0,
+              stock: 0,
+            })
+            .select("id")
+            .single();
+          if (newProdErr) throw newProdErr;
+          prodId = newProd.id;
+        }
+
+        resolvedMovements.push({
+          product_id: prodId,
+          quantity: Number(line.quantity),
+          initial_price: Number(line.initial_price || 0),
+          created_by: u.user?.id,
+        });
+      }
+
       if (editingEntry) {
         const { error: entryError } = await supabase
           .from("stock_entries")
@@ -81,17 +117,15 @@ function WarehousePage() {
           .eq("stock_entry_id", editingEntry);
         if (deleteError) throw deleteError;
         const { error: lineError } = await supabase.from("stock_movements").insert(
-          validLines.map((line) => ({
+          resolvedMovements.map((rm) => ({
+            ...rm,
             stock_entry_id: editingEntry,
-            product_id: line.product_id,
-            quantity: Number(line.quantity),
-            initial_price: Number(line.initial_price || 0),
-            created_by: u.user?.id,
           })),
         );
         if (lineError) throw lineError;
         return;
       }
+
       const { data: entry, error: entryError } = await supabase
         .from("stock_entries")
         .insert({
@@ -102,13 +136,11 @@ function WarehousePage() {
         .select("id")
         .single();
       if (entryError) throw entryError;
+
       const { error: lineError } = await supabase.from("stock_movements").insert(
-        validLines.map((line) => ({
+        resolvedMovements.map((rm) => ({
+          ...rm,
           stock_entry_id: entry.id,
-          product_id: line.product_id,
-          quantity: Number(line.quantity),
-          initial_price: Number(line.initial_price || 0),
-          created_by: u.user?.id,
         })),
       );
       if (lineError) {
@@ -142,7 +174,7 @@ function WarehousePage() {
     setShippingCost(String(entry.shipping_cost));
     setLines(
       entry.stock_movements.map((movement: any) => ({
-        product_id: movement.product_id,
+        product_name: movement.products?.name ?? "",
         quantity: String(movement.quantity),
         initial_price: String(movement.initial_price),
       })),
@@ -215,22 +247,13 @@ function WarehousePage() {
                   className="grid grid-cols-[minmax(0,1fr)_80px_110px_auto] gap-2 items-end"
                 >
                   <div className="space-y-1">
-                    <Label className="text-xs">Produk</Label>
-                    <Select
-                      value={line.product_id}
-                      onValueChange={(product_id) => updateLine(index, { product_id })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-xs">Nama Belanjaan</Label>
+                    <Input
+                      value={line.product_name}
+                      onChange={(event) => updateLine(index, { product_name: event.target.value })}
+                      placeholder="Contoh: Ayam, Beras, Cup"
+                      required
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Jumlah</Label>

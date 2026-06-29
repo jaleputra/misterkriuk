@@ -28,6 +28,7 @@ import {
   Users,
 } from "lucide-react";
 import { Receipt } from "@/components/Receipt";
+import { generateDynamicQris } from "@/lib/qris";
 import { ReceiptDialogFooter } from "@/components/ReceiptDialogFooter";
 import { Label } from "@/components/ui/label";
 import {
@@ -314,7 +315,7 @@ function TransactionPage() {
           </span>
         </div>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {visibleProducts.map((p) => {
           const out = p.stock <= 0;
           return (
@@ -323,36 +324,36 @@ function TransactionPage() {
               onClick={() => addToCart(p)}
               disabled={out}
               className={[
-                "group relative text-left rounded-xl border bg-card p-2 transition-all flex items-center gap-2",
+                "group relative text-left rounded-xl border bg-card p-2.5 transition-all flex items-center gap-3",
                 out
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:border-primary hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]",
               ].join(" ")}
             >
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
+              <div className="h-14 w-14 rounded-lg bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
                 {p.image_url ? (
                   <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                 ) : (
-                  <Drumstick className="h-5 w-5 text-primary/70" />
+                  <Drumstick className="h-6 w-6 text-primary/70" />
                 )}
               </div>
-              <div className="flex-1 min-w-0 flex flex-col justify-between h-10">
-                <div className="font-semibold text-xs leading-tight truncate">
+              <div className="flex-1 min-w-0 flex flex-col justify-between h-14">
+                <div className="font-semibold text-xs sm:text-sm leading-tight line-clamp-2">
                   {p.name}
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mt-1">
                   <div className="flex items-baseline gap-1">
-                    <span className="text-primary font-bold text-xs">{rupiah(p.price)}</span>
+                    <span className="text-primary font-bold text-xs sm:text-sm">{rupiah(p.price)}</span>
                     {activeEvent && p.originalPrice !== p.price && (
-                      <span className="text-[8px] text-muted-foreground line-through">
+                      <span className="text-[9px] text-muted-foreground line-through">
                         {rupiah(p.originalPrice)}
                       </span>
                     )}
                   </div>
                   {out ? (
-                    <span className="text-[8px] font-semibold text-destructive">Habis</span>
+                    <span className="text-[9px] font-semibold text-destructive">Habis</span>
                   ) : (
-                    <span className="text-[8px] text-muted-foreground">Stok {p.stock}</span>
+                    <span className="text-[10px] text-muted-foreground">Stok {p.stock}</span>
                   )}
                 </div>
               </div>
@@ -486,7 +487,7 @@ function TransactionPage() {
 
       {/* Checkout */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md top-[20%] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
           {checkoutStep === "block" ? (
             <>
               <DialogHeader>
@@ -589,12 +590,68 @@ function TransactionPage() {
                   </div>
                 </TabsContent>
                 <TabsContent value="qris" className="pt-3">
-                  <div className="aspect-square max-w-[220px] mx-auto rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/30 grid place-items-center border-2 border-dashed">
-                    <div className="text-center">
-                      <QrCode className="h-20 w-20 text-primary mx-auto" />
-                      <div className="text-xs mt-2 text-muted-foreground">Scan untuk membayar</div>
-                    </div>
-                  </div>
+                  {(() => {
+                    const dbQrisPayload = settings?.qris_payload;
+                    const dbQrisImageUrl = settings?.qris_image_url;
+                    
+                    const localQrisPayload = typeof window !== "undefined" ? localStorage.getItem("qris_payload") : "";
+                    const localQrisImageUrl = typeof window !== "undefined" ? localStorage.getItem("qris_image_url") : "";
+                    
+                    const payload = dbQrisPayload || localQrisPayload || "";
+                    const imageUrl = dbQrisImageUrl || localQrisImageUrl || "";
+
+                    if (payload) {
+                      const dynamicQris = generateDynamicQris(payload, total);
+                      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(dynamicQris)}`;
+                      return (
+                        <div className="text-center space-y-3">
+                          <div className="inline-block p-2 rounded-2xl bg-white border border-primary/20 shadow-md">
+                            <img 
+                              src={qrUrl} 
+                              alt="QRIS Dinamis" 
+                              className="w-48 h-48 mx-auto object-contain"
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground font-semibold">
+                            Scan untuk membayar <span className="text-primary">{rupiah(total)}</span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground px-4 bg-muted py-1.5 rounded">
+                            Nominal sudah otomatis tertera di aplikasi pembayaran setelah discan.
+                          </div>
+                        </div>
+                      );
+                    } else if (imageUrl) {
+                      return (
+                        <div className="text-center space-y-3">
+                          <div className="inline-block p-2 rounded-2xl bg-white border border-primary/20 shadow-md">
+                            <img 
+                              src={imageUrl} 
+                              alt="QRIS Statis" 
+                              className="w-48 h-48 mx-auto object-contain"
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground font-semibold">
+                            Scan untuk membayar <span className="text-primary">{rupiah(total)}</span>
+                          </div>
+                          <div className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-4 py-1.5 rounded">
+                            Peringatan: Masukkan nominal manual sebesar {rupiah(total)} saat membayar.
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="aspect-square max-w-[220px] mx-auto rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/30 grid place-items-center border-2 border-dashed">
+                          <div className="text-center p-4">
+                            <QrCode className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                            <div className="text-xs font-semibold text-muted-foreground">QRIS Belum Diupload</div>
+                            <div className="text-[10px] text-muted-foreground mt-1">
+                              Buka halaman Pengaturan untuk mengupload gambar QRIS toko Anda.
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  })()}
                 </TabsContent>
               </Tabs>
               <DialogFooter className="flex gap-2">

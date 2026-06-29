@@ -94,6 +94,8 @@ export type Database = {
           id: number
           paper_width: number | null
           printer_name: string | null
+          qris_image_url: string | null
+          qris_payload: string | null
           shop_address: string | null
           shop_name: string | null
           shop_phone: string | null
@@ -104,6 +106,8 @@ export type Database = {
           id?: number
           paper_width?: number | null
           printer_name?: string | null
+          qris_image_url?: string | null
+          qris_payload?: string | null
           shop_address?: string | null
           shop_name?: string | null
           shop_phone?: string | null
@@ -114,6 +118,8 @@ export type Database = {
           id?: number
           paper_width?: number | null
           printer_name?: string | null
+          qris_image_url?: string | null
+          qris_payload?: string | null
           shop_address?: string | null
           shop_name?: string | null
           shop_phone?: string | null

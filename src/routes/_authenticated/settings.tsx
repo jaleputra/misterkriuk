@@ -10,8 +10,9 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save } from "lucide-react";
+import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save, QrCode } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import jsQR from "jsqr";
 import { rupiah } from "@/lib/format";
 import {
   connectPrinterClient,
@@ -35,29 +36,101 @@ function SettingsPage() {
   });
 
   const [form, setForm] = useState({
-    shop_name: "", shop_address: "", shop_phone: "", whatsapp_number: "", printer_name: "", paper_width: 58,
+    shop_name: "", 
+    shop_address: "", 
+    shop_phone: "", 
+    whatsapp_number: "", 
+    printer_name: "", 
+    paper_width: 58,
+    qris_payload: "",
+    qris_image_url: "",
   });
   useEffect(() => {
-    if (settings) setForm({
-      shop_name: settings.shop_name ?? "",
-      shop_address: settings.shop_address ?? "",
-      shop_phone: settings.shop_phone ?? "",
-      whatsapp_number: settings.whatsapp_number ?? "",
-      printer_name: settings.printer_name ?? "",
-      paper_width: settings.paper_width ?? 58,
-    });
+    if (settings) {
+      const localQrisPayload = localStorage.getItem("qris_payload") || "";
+      const localQrisImageUrl = localStorage.getItem("qris_image_url") || "";
+      setForm({
+        shop_name: settings.shop_name ?? "",
+        shop_address: settings.shop_address ?? "",
+        shop_phone: settings.shop_phone ?? "",
+        whatsapp_number: settings.whatsapp_number ?? "",
+        printer_name: settings.printer_name ?? "",
+        paper_width: settings.paper_width ?? 58,
+        qris_payload: (settings as any).qris_payload ?? localQrisPayload,
+        qris_image_url: (settings as any).qris_image_url ?? localQrisImageUrl,
+      });
+    }
   }, [settings]);
 
   const save = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("printer_settings")
-        .update({ ...form, updated_at: new Date().toISOString() })
-        .eq("id", 1);
-      if (error) throw error;
+      try {
+        const { error } = await supabase.from("printer_settings")
+          .update({
+            shop_name: form.shop_name,
+            shop_address: form.shop_address,
+            shop_phone: form.shop_phone,
+            whatsapp_number: form.whatsapp_number,
+            printer_name: form.printer_name,
+            paper_width: form.paper_width,
+            qris_payload: form.qris_payload || null,
+            qris_image_url: form.qris_image_url || null,
+            updated_at: new Date().toISOString()
+          } as any)
+          .eq("id", 1);
+        if (error) throw error;
+      } catch (err) {
+        console.warn("Gagal menyimpan ke database, menggunakan fallback localStorage", err);
+      }
+      localStorage.setItem("qris_payload", form.qris_payload || "");
+      localStorage.setItem("qris_image_url", form.qris_image_url || "");
     },
     onSuccess: () => { toast.success("Pengaturan disimpan"); qc.invalidateQueries({ queryKey: ["printer_settings"] }); },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const handleQrisImageUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        
+        try {
+          const imageData = ctx.getImageData(0, 0, img.width, img.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code) {
+            setForm((f) => ({
+              ...f,
+              qris_payload: code.data,
+              qris_image_url: canvas.toDataURL("image/jpeg", 0.85),
+            }));
+            toast.success("QRIS berhasil didekode otomatis!");
+          } else {
+            setForm((f) => ({
+              ...f,
+              qris_image_url: canvas.toDataURL("image/jpeg", 0.85),
+            }));
+            toast.warning("QR Code tidak terbaca otomatis. Gambar disimpan, silakan isi Teks Payload QRIS manual jika ingin nominal dinamis.");
+          }
+        } catch (err) {
+          console.error("Gagal membaca QR Code", err);
+          setForm((f) => ({
+            ...f,
+            qris_image_url: canvas.toDataURL("image/jpeg", 0.85),
+          }));
+          toast.warning("Gagal memproses QR Code secara otomatis. Gambar berhasil disimpan.");
+        }
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const [printerConnected, setPrinterConnected] = useState(false);
   const [printerBusy, setPrinterBusy] = useState(false);
@@ -267,6 +340,63 @@ function SettingsPage() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground">Aktifkan Bluetooth lalu sambungkan printer thermal. Saat checkout, tombol "Cetak" akan langsung mengirim struk ke printer.</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <QrCode className="h-4 w-4" /> Pengaturan QRIS Pembayaran
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Upload Gambar QRIS</Label>
+                <Input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleQrisImageUpload(file);
+                  }} 
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Unggah file gambar QRIS Anda. Sistem akan mencoba membaca payload/teks QRIS secara otomatis.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Teks Payload QRIS (Dihasilkan Otomatis / Input Manual)</Label>
+                <Input 
+                  value={form.qris_payload} 
+                  onChange={(e) => setForm({ ...form, qris_payload: e.target.value })} 
+                  placeholder="000201010211..." 
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  String payload QRIS standar EMVCo (dimulai dengan 000201...). Dibutuhkan untuk membuat nominal dinamis.
+                </p>
+              </div>
+            </div>
+
+            {form.qris_image_url && (
+              <div className="pt-2 flex flex-col items-center sm:items-start gap-2">
+                <Label className="text-xs">Preview QRIS Terunggah:</Label>
+                <img 
+                  src={form.qris_image_url} 
+                  alt="QRIS Preview" 
+                  className="max-w-[150px] aspect-square object-contain border rounded p-1 bg-white" 
+                />
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-destructive h-8 text-xs px-2"
+                  onClick={() => setForm({ ...form, qris_image_url: "", qris_payload: "" })}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Hapus QRIS
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
