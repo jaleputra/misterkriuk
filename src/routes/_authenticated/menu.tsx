@@ -30,6 +30,8 @@ function MenuPage() {
     queryFn: async () => (await supabase.from("products").select("*").order("name")).data ?? [],
   });
 
+  const visibleProducts = products.filter((p: any) => !p.category?.startsWith("deleted_"));
+
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -104,11 +106,27 @@ function MenuPage() {
 
   const del = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) throw error;
+      // 1. Coba hapus secara permanen (hard delete)
+      const { error: hardDeleteErr } = await supabase.from("products").delete().eq("id", id);
+      
+      // 2. Jika gagal karena relasi foreign key, lakukan soft delete (ubah kategori)
+      if (hardDeleteErr) {
+        console.warn("Hard delete gagal, dialihkan ke soft delete:", hardDeleteErr);
+        
+        const { data: prod } = await supabase.from("products").select("category").eq("id", id).single();
+        if (prod && !prod.category.startsWith("deleted_")) {
+          const { error: softDeleteErr } = await supabase
+            .from("products")
+            .update({ category: `deleted_${prod.category}` })
+            .eq("id", id);
+          if (softDeleteErr) throw softDeleteErr;
+        } else {
+          throw hardDeleteErr;
+        }
+      }
     },
     onSuccess: () => {
-      toast.success("Produk dihapus");
+      toast.success("Produk berhasil dihapus");
       qc.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -237,13 +255,13 @@ function MenuPage() {
 
       <Card className="lg:col-span-3">
         <CardHeader>
-          <CardTitle className="text-base">Daftar Menu ({products.length})</CardTitle>
+          <CardTitle className="text-base">Daftar Menu ({visibleProducts.length})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {products.length === 0 && (
+          {visibleProducts.length === 0 && (
             <p className="text-sm text-muted-foreground">Belum ada produk.</p>
           )}
-          {products.map((p: any) => (
+          {visibleProducts.map((p: any) => (
             <div
               key={p.id}
               className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card hover:bg-accent/20 transition"
