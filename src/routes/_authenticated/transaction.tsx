@@ -339,28 +339,28 @@ function TransactionPage() {
               onClick={() => addToCart(p)}
               disabled={out}
               className={[
-                "group relative text-left rounded-xl border bg-card p-4 transition-all flex items-center gap-4",
+                "group relative text-left rounded-2xl border bg-card p-5 transition-all flex items-center gap-5",
                 out
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:border-primary hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]",
               ].join(" ")}
             >
-              <div className="h-16 w-16 rounded-lg bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
+              <div className="h-20 w-20 rounded-xl bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
                 {p.image_url ? (
                   <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                 ) : (
-                  <Drumstick className="h-8 w-8 text-primary/70" />
+                  <Drumstick className="h-10 w-10 text-primary/70" />
                 )}
               </div>
-              <div className="flex-1 min-w-0 flex flex-col justify-between h-16">
-                <div className="font-semibold text-sm sm:text-base leading-tight line-clamp-2">
+              <div className="flex-1 min-w-0 flex flex-col justify-between h-20">
+                <div className="font-bold text-sm sm:text-base md:text-lg leading-snug line-clamp-2">
                   {p.name}
                 </div>
                 <div className="flex items-center justify-between mt-1">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-primary font-bold text-sm sm:text-base">{rupiah(p.price)}</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-primary font-bold text-sm sm:text-base md:text-lg">{rupiah(p.price)}</span>
                     {activeEvent && p.originalPrice !== p.price && (
-                      <span className="text-[10px] text-muted-foreground line-through">
+                      <span className="text-xs text-muted-foreground line-through">
                         {rupiah(p.originalPrice)}
                       </span>
                     )}
