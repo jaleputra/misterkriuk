@@ -79,8 +79,13 @@ export function Receipt({ tx, settings }: ReceiptProps) {
       )}
       <hr className="border-t border-dashed border-black my-2" />
       <div className="center text-center">
-        Terima kasih {tx.buyer_name ?? "Pelanggan"} {tx.house_block ? `Blok ${tx.house_block}` : ""} 🙏
+        Terima kasih {tx.buyer_name ?? "Pelanggan"} 🙏
       </div>
+      {tx.house_block && (
+        <div className="center text-center font-bold text-lg mt-3 border border-black p-1.5 rounded bg-black/5">
+          BLOK: {tx.house_block.toUpperCase()}
+        </div>
+      )}
     </div>
   );
 }

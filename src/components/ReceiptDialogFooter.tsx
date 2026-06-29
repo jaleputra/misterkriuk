@@ -48,7 +48,7 @@ export function ReceiptDialogFooter({ tx, settings }: Props) {
     <>
       <Button variant="outline" className="flex-1" onClick={handlePrint}>
         <Printer className="h-4 w-4 mr-2" />
-        {printerConnected ? "Cetak" : "Cetak PDF"}
+        Cetak Struk
       </Button>
       <Button
         className="flex-1 bg-success text-success-foreground hover:bg-success/90"

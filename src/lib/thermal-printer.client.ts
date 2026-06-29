@@ -239,8 +239,14 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(cmd.alignCenter);
-  const thanks = `Terima kasih ${tx.buyer_name ?? "Pembeli"} ${tx.house_block ?? ""}`.trim();
+  const thanks = `Terima kasih ${tx.buyer_name ?? "Pelanggan"}`;
   for (const l of wrap(thanks, width)) parts.push(enc.encode(l + "\n"));
+  if (tx.house_block) {
+    parts.push(enc.encode("\n"));
+    parts.push(cmd.boldOn, cmd.doubleOn);
+    parts.push(enc.encode(`BLOK: ${tx.house_block.toUpperCase()}\n`));
+    parts.push(cmd.doubleOff, cmd.boldOff);
+  }
   parts.push(cmd.feed(3));
   parts.push(cmd.cut);
   return concat(parts);

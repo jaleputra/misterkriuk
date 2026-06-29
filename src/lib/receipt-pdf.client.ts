@@ -80,8 +80,11 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
     row("Kembalian", rupiah(tx.change_amount ?? 0));
   }
   divider();
-  const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
-  centerText(`Terima kasih ${tx.buyer_name ?? customerInfo}`.trim());
+  centerText(`Terima kasih ${tx.buyer_name ?? "Pelanggan"}`.trim());
+  if (tx.house_block) {
+    y += 2;
+    centerText(`BLOK: ${tx.house_block.toUpperCase()}`, 11, true);
+  }
 
   return { pdf, fileName: safeFileName(tx) };
 }
@@ -145,35 +148,39 @@ export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: Rec
     const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
     const messageText = `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? customerInfo}.`;
 
-    // Coba bagikan menggunakan Web Share API (didukung di mobile)
-    const nav = navigator as any;
-    if (nav.share && nav.canShare && nav.canShare({ files: [file] })) {
-      await nav.share({
-        files: [file],
-        title: "Struk Pembayaran",
-        text: messageText,
-      });
-      toast.success("Struk berhasil dibagikan");
-    } else {
-      // Fallback untuk browser desktop: unduh gambar dan arahkan ke WhatsApp
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      const whatsappText = encodeURIComponent(
-        `${messageText} Gambar struk sudah diunduh otomatis, silakan lampirkan file ${fileName}.`
-      );
-      const whatsappUrl = `https://wa.me/?text=${whatsappText}`;
-      const whatsappWindow = window.open(whatsappUrl, "_blank");
-      if (!whatsappWindow) {
-        toast.success("Gambar struk diunduh");
-        throw new Error("Izinkan pop-up untuk membuka WhatsApp secara otomatis");
+    // Coba salin gambar ke clipboard agar kasir bisa langsung Paste (Ctrl+V) di chat WhatsApp
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [blob.type]: blob,
+          }),
+        ]);
+        toast.success("Gambar struk disalin ke clipboard! Silakan paste di WhatsApp.");
       }
+    } catch (clipErr) {
+      console.log("Clipboard copy not supported or failed", clipErr);
+    }
+
+    // Unduh gambar struk otomatis
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Otomatis buka WhatsApp dengan prefilled text
+    const whatsappText = encodeURIComponent(
+      `${messageText} Gambar struk sudah diunduh otomatis, silakan lampirkan/paste file ${fileName}.`
+    );
+    const whatsappUrl = `https://wa.me/?text=${whatsappText}`;
+    const whatsappWindow = window.open(whatsappUrl, "_blank");
+    if (!whatsappWindow) {
+      toast.success("Gambar struk diunduh");
+      throw new Error("Izinkan pop-up untuk membuka WhatsApp secara otomatis");
     }
   } catch (err) {
     element.setAttribute("style", originalStyle);

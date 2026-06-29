@@ -38,6 +38,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ReceiptPdfTransaction } from "@/lib/receipt-pdf.types";
+import {
+  isPrinterConnectedClient,
+  printReceiptThermalClient,
+} from "@/lib/thermal-printer.actions";
 
 export const Route = createFileRoute("/_authenticated/transaction")({
   ssr: false,
@@ -244,7 +248,7 @@ function TransactionPage() {
       }
       return { tx, items };
     },
-    onSuccess: ({ tx, items }) => {
+    onSuccess: async ({ tx, items }) => {
       setLastTx({ ...tx, items });
       setCheckoutOpen(false);
       setCartOpen(false);
@@ -254,6 +258,15 @@ function TransactionPage() {
       setPartnerName("");
       setHouseBlock("");
       qc.invalidateQueries({ queryKey: ["products"] });
+
+      if (isPrinterConnectedClient()) {
+        try {
+          await printReceiptThermalClient({ ...tx, items }, settings ?? null);
+          toast.success("Transaksi berhasil & Struk dicetak otomatis");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Gagal mencetak struk otomatis");
+        }
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
