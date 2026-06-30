@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { rupiah } from "@/lib/format";
 import { useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
   ResponsiveContainer,
   BarChart,
@@ -21,7 +25,19 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { TrendingUp, DollarSign, BarChart3 } from "lucide-react";
+import {
+  TrendingUp,
+  DollarSign,
+  BarChart3,
+  ArrowLeft,
+  Printer,
+  Share2,
+  Trash2,
+  Save,
+} from "lucide-react";
+import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
+import { shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
+import { Receipt } from "@/components/Receipt";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   ssr: false,
@@ -77,6 +93,134 @@ function Dashboard() {
   const products = data?.products ?? [];
   const stockEntries = data?.stockEntries ?? [];
   const stockMovements = data?.stockMovements ?? [];
+
+  const qc = useQueryClient();
+
+  const { data: settings } = useQuery({
+    queryKey: ["printer_settings"],
+    queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
+  });
+
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    payment_method: "cash",
+    house_block: "",
+    cash_received: "",
+    partner_name: "",
+  });
+
+  const handleSelectTx = (t: any) => {
+    setEditingTxId(t.id);
+    setEditForm({
+      payment_method: t.payment_method,
+      house_block: t.house_block ?? "",
+      cash_received: String(t.cash_received ?? ""),
+      partner_name: t.partner_name ?? "",
+    });
+  };
+
+  const deleteTransaction = useMutation({
+    mutationFn: async (txId: string) => {
+      const txItems = items.filter((item) => item.transaction_id === txId);
+      
+      // Kembalikan stok produk
+      for (const item of txItems) {
+        if (item.product_id) {
+          const { data: prod } = await supabase
+            .from("products")
+            .select("stock")
+            .eq("id", item.product_id)
+            .single();
+          if (prod) {
+            await supabase
+              .from("products")
+              .update({ stock: prod.stock + item.quantity })
+              .eq("id", item.product_id);
+          }
+        }
+      }
+      
+      // Hapus items
+      const { error: itemsErr } = await supabase
+        .from("transaction_items")
+        .delete()
+        .eq("transaction_id", txId);
+      if (itemsErr) throw itemsErr;
+      
+      // Hapus transaksi
+      const { error: txErr } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("id", txId);
+      if (txErr) throw txErr;
+    },
+    onSuccess: () => {
+      toast.success("Transaksi berhasil dihapus & stok produk dikembalikan");
+      setEditingTxId(null);
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: Error) => {
+      toast.error("Gagal menghapus transaksi: " + err.message);
+    }
+  });
+
+  const editTransaction = useMutation({
+    mutationFn: async () => {
+      if (!editingTxId) return;
+      const totalAmt = Number(txs.find((t) => t.id === editingTxId)?.total ?? 0);
+      const isCash = editForm.payment_method === "cash";
+      const cashVal = Number(editForm.cash_received) || 0;
+      
+      if (isCash && cashVal < totalAmt) {
+        throw new Error("Uang tunai kurang");
+      }
+      
+      const changeAmt = isCash ? Math.max(0, cashVal - totalAmt) : null;
+      
+      const { error } = await supabase
+        .from("transactions")
+        .update({
+          payment_method: editForm.payment_method,
+          house_block: editForm.house_block.trim() || null,
+          cash_received: isCash ? cashVal : null,
+          change_amount: changeAmt,
+          partner_name: editForm.partner_name.trim() || null,
+        })
+        .eq("id", editingTxId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Transaksi berhasil diperbarui");
+      setEditingTxId(null);
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (err: Error) => {
+      toast.error("Gagal memperbarui transaksi: " + err.message);
+    }
+  });
+
+  const handlePrintThermal = async (tx: any) => {
+    const txItems = items.filter((item) => item.transaction_id === tx.id);
+    if (!isPrinterConnectedClient()) {
+      toast.warning("Printer Bluetooth belum terhubung. Silakan sambungkan di halaman Pengaturan.");
+      return;
+    }
+    try {
+      await printReceiptThermalClient({ ...tx, items: txItems }, settings ?? null);
+      toast.success("Struk berhasil dikirim ke printer");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mencetak");
+    }
+  };
+
+  const handleShareReceipt = async (tx: any, txItems: any) => {
+    try {
+      await shareReceiptImageClient({ ...tx, items: txItems }, settings ?? null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal membagikan struk");
+    }
+  };
 
   // Pemasukan
   const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
@@ -311,21 +455,28 @@ function Dashboard() {
       <Dialog
         open={detailModal.open}
         onOpenChange={(open) => {
-          if (!open) setDetailModal((m) => ({ ...m, open: false }));
+          if (!open) {
+            setDetailModal((m) => ({ ...m, open: false }));
+            setEditingTxId(null);
+          }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className={detailModal.type === "pemasukan" && editingTxId ? "max-w-3xl" : "max-w-md"}>
           <DialogHeader>
             <DialogTitle>{detailModal.title}</DialogTitle>
           </DialogHeader>
 
-          {detailModal.type === "pemasukan" && (
+          {detailModal.type === "pemasukan" && !editingTxId && (
             <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
               {txs.length === 0 ? (
                 <p className="text-center text-muted-foreground py-4 text-sm">Belum ada pemasukan di periode ini.</p>
               ) : (
                 txs.map((t) => (
-                  <div key={t.id} className="flex justify-between items-center border-b pb-2 text-sm">
+                  <div
+                    key={t.id}
+                    onClick={() => handleSelectTx(t)}
+                    className="flex justify-between items-center border-b pb-2 text-sm cursor-pointer hover:bg-muted/50 p-2 rounded transition active:scale-[0.98]"
+                  >
                     <div>
                       <div className="font-semibold">No: {t.id.slice(0, 8).toUpperCase()}</div>
                       <div className="text-xs text-muted-foreground">
@@ -343,6 +494,137 @@ function Dashboard() {
               )}
             </div>
           )}
+
+          {detailModal.type === "pemasukan" && editingTxId && (() => {
+            const selectedTx = txs.find((t) => t.id === editingTxId);
+            if (!selectedTx) return null;
+            const selectedItems = items.filter((i) => i.transaction_id === editingTxId);
+            const totalAmt = Number(selectedTx.total);
+            const isCash = editForm.payment_method === "cash";
+            const cashVal = Number(editForm.cash_received) || 0;
+            const changeAmt = isCash ? Math.max(0, cashVal - totalAmt) : 0;
+
+            return (
+              <div className="space-y-4 py-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingTxId(null)}
+                  className="mb-2"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-1" /> Kembali ke Daftar
+                </Button>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Left Column: Struk Preview */}
+                  <div className="border rounded-lg p-2 bg-muted/20">
+                    <Receipt tx={{ ...selectedTx, items: selectedItems }} settings={settings} />
+                  </div>
+
+                  {/* Right Column: Edit Form & Actions */}
+                  <div className="space-y-4">
+                    <div className="space-y-3 border rounded-lg p-3 bg-card">
+                      <h3 className="font-semibold text-sm">Edit Data Transaksi</h3>
+                      
+                      <div className="space-y-1.5">
+                        <Label>Metode Pembayaran</Label>
+                        <Select
+                          value={editForm.payment_method}
+                          onValueChange={(v) => setEditForm({ ...editForm, payment_method: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Tunai (Cash)</SelectItem>
+                            <SelectItem value="qris">QRIS</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {editForm.payment_method === "cash" && (
+                        <div className="space-y-1.5">
+                          <Label>Uang Tunai Diterima</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={editForm.cash_received}
+                            onChange={(e) => setEditForm({ ...editForm, cash_received: e.target.value })}
+                          />
+                          <div className="text-xs text-muted-foreground flex justify-between mt-1">
+                            <span>Tagihan: {rupiah(totalAmt)}</span>
+                            <span className="text-success font-semibold">Kembalian: {rupiah(changeAmt)}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                        <Label>Blok Rumah (opsional)</Label>
+                        <Input
+                          value={editForm.house_block}
+                          onChange={(e) => setEditForm({ ...editForm, house_block: e.target.value })}
+                          placeholder="Contoh: Blok A1"
+                        />
+                      </div>
+
+                      {selectedTx.sale_category === "partner" && (
+                        <div className="space-y-1.5">
+                          <Label>Nama Partner</Label>
+                          <Input
+                            value={editForm.partner_name}
+                            onChange={(e) => setEditForm({ ...editForm, partner_name: e.target.value })}
+                            placeholder="Nama partner bisnis"
+                          />
+                        </div>
+                      )}
+
+                      <Button
+                        className="w-full mt-2"
+                        size="sm"
+                        disabled={editTransaction.isPending}
+                        onClick={() => editTransaction.mutate()}
+                      >
+                        <Save className="h-4 w-4 mr-1.5" /> Simpan Perubahan
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="font-semibold text-xs text-muted-foreground px-1">Aksi Transaksi</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePrintThermal(selectedTx)}
+                        >
+                          <Printer className="h-4 w-4 mr-1.5" /> Cetak Thermal
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleShareReceipt(selectedTx, selectedItems)}
+                        >
+                          <Share2 className="h-4 w-4 mr-1.5" /> Bagikan Struk
+                        </Button>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        className="w-full mt-2"
+                        size="sm"
+                        disabled={deleteTransaction.isPending}
+                        onClick={() => {
+                          if (confirm("Apakah Anda yakin ingin menghapus transaksi ini? Stok produk akan dikembalikan otomatis dan data penjualan dihapus.")) {
+                            deleteTransaction.mutate(selectedTx.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1.5" /> Hapus Transaksi
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {detailModal.type === "pengeluaran" && (
             <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
