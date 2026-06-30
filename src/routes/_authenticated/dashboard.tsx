@@ -88,7 +88,21 @@ function Dashboard() {
     refetchInterval: 30000,
   });
 
-  const txs = data?.transactions ?? [];
+  const [deletedTxIds, setDeletedTxIds] = useState<string[]>([]);
+  const [localEditedTxs, setLocalEditedTxs] = useState<Record<string, any>>({});
+
+  const txs = useMemo(() => {
+    const rawTxs = data?.transactions ?? [];
+    return rawTxs
+      .filter((t) => !deletedTxIds.includes(t.id))
+      .map((t) => {
+        if (localEditedTxs[t.id]) {
+          return { ...t, ...localEditedTxs[t.id] };
+        }
+        return t;
+      });
+  }, [data?.transactions, deletedTxIds, localEditedTxs]);
+
   const items = data?.items ?? [];
   const products = data?.products ?? [];
   const stockEntries = data?.stockEntries ?? [];
@@ -154,8 +168,9 @@ function Dashboard() {
         .eq("id", txId);
       if (txErr) throw txErr;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       toast.success("Transaksi berhasil dihapus & stok produk dikembalikan");
+      setDeletedTxIds((prev) => [...prev, variables]);
       setEditingTxId(null);
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["products"] });
@@ -192,6 +207,18 @@ function Dashboard() {
     },
     onSuccess: () => {
       toast.success("Transaksi berhasil diperbarui");
+      if (editingTxId) {
+        setLocalEditedTxs((prev) => ({
+          ...prev,
+          [editingTxId]: {
+            payment_method: editForm.payment_method,
+            house_block: editForm.house_block.trim() || null,
+            cash_received: editForm.payment_method === "cash" ? Number(editForm.cash_received) : null,
+            change_amount: editForm.payment_method === "cash" ? Math.max(0, (Number(editForm.cash_received) || 0) - Number(txs.find((t) => t.id === editingTxId)?.total ?? 0)) : null,
+            partner_name: editForm.partner_name.trim() || null,
+          },
+        }));
+      }
       setEditingTxId(null);
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
