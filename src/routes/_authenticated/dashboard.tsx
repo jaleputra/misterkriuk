@@ -667,11 +667,15 @@ function Dashboard() {
                 stockEntries.map((entry) => {
                   const movements = stockMovements.filter((m) => m.stock_entry_id === entry.id);
                   const subtotal = movements.reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
+                  const groceryNames = movements
+                    .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
+                    .filter(Boolean)
+                    .join(", ");
                   return (
                     <div key={entry.id} className="border-b pb-3 space-y-1 text-sm">
-                      <div className="flex justify-between font-semibold">
-                        <span>Pengeluaran #{entry.id.slice(0, 6).toUpperCase()}</span>
-                        <span className="text-destructive font-bold">{rupiah(subtotal + entry.shipping_cost)}</span>
+                      <div className="flex justify-between font-semibold gap-4">
+                        <span className="truncate max-w-[200px] sm:max-w-xs">{groceryNames || `Pengeluaran #${entry.id.slice(0, 6).toUpperCase()}`}</span>
+                        <span className="text-destructive font-bold shrink-0">{rupiah(subtotal + entry.shipping_cost)}</span>
                       </div>
                       <div className="text-[11px] text-muted-foreground">
                         Tanggal: {entry.restock_date} | Ongkir: {rupiah(entry.shipping_cost)}
