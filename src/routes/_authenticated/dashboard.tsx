@@ -45,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function Dashboard() {
-  const [dateFilter, setDateFilter] = useState<"7" | "14" | "30" | "month" | "all">("14");
+  const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
   const [detailModal, setDetailModal] = useState<{
     open: boolean;
     title: string;
@@ -60,7 +60,9 @@ function Dashboard() {
     queryKey: ["dashboard", dateFilter],
     queryFn: async () => {
       const since = new Date();
-      if (dateFilter === "7") since.setDate(since.getDate() - 6);
+      if (dateFilter === "today") {
+        since.setHours(0, 0, 0, 0);
+      } else if (dateFilter === "7") since.setDate(since.getDate() - 6);
       else if (dateFilter === "14") since.setDate(since.getDate() - 13);
       else if (dateFilter === "30") since.setDate(since.getDate() - 29);
       else if (dateFilter === "month") {
@@ -251,6 +253,8 @@ function Dashboard() {
 
   // Pemasukan
   const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
+  const cashRevenue = useMemo(() => txs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [txs]);
+  const qrisRevenue = useMemo(() => txs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [txs]);
 
   // Pengeluaran
   const totalExpenditure = useMemo(() => {
@@ -269,7 +273,8 @@ function Dashboard() {
   const daily = useMemo(() => {
     const dailyMap: Record<string, number> = {};
     let daysCount = 14;
-    if (dateFilter === "7") daysCount = 7;
+    if (dateFilter === "today") daysCount = 1;
+    else if (dateFilter === "7") daysCount = 7;
     else if (dateFilter === "30") daysCount = 30;
     else if (dateFilter === "month") {
       const todayDate = new Date();
@@ -334,6 +339,7 @@ function Dashboard() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="today">Hari Ini</SelectItem>
               <SelectItem value="7">7 Hari Terakhir</SelectItem>
               <SelectItem value="14">14 Hari Terakhir</SelectItem>
               <SelectItem value="30">30 Hari Terakhir</SelectItem>
@@ -350,7 +356,7 @@ function Dashboard() {
           icon={DollarSign}
           label="Pemasukan"
           value={rupiah(totalRevenue)}
-          sub={`${txs.length} Transaksi`}
+          sub={`${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
           onClick={() => setDetailModal({
             open: true,
             title: "Detail Pemasukan",
