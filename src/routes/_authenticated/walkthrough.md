@@ -76,6 +76,10 @@ Berikut adalah ringkasan seluruh perubahan akhir yang telah diimplementasikan da
     - **Filter Waktu "Hari Ini"**: Menambahkan filter waktu **Hari Ini** pada dropdown filter dashboard. Ketika dipilih, dashboard akan menyaring data transaksi dan pengeluaran khusus untuk hari ini saja (sejak pukul 00:00:00 waktu setempat), memudahkan pemantauan omset dan laba harian.
     - **Sinkronisasi Pendapatan Dashboard**: Pengeluaran gudang secara otomatis mengurangi pemasukan untuk menghasilkan nilai **Pendapatan Bersih** yang akurat dan realtime.
 
+11. **Perbaikan Hapus Transaksi Permanen di Database (RLS & Grant Hotfix)**:
+    - **Penyebab Bug**: Transaksi yang dihapus di Dashboard kembali muncul setelah direfresh karena database remote Supabase tidak mengizinkan operasi `DELETE` dan `UPDATE` pada tabel `transactions` dan `transaction_items` untuk peran `authenticated` (tidak ada kebijakan RLS delete/update dan tidak ada grant privilege).
+    - **Solusi**: Menambahkan file migrasi database baru [20260701000002_add_transaction_delete_policy.sql](file:///Users/roughtell/amichicken/supabase/migrations/20260701000002_add_transaction_delete_policy.sql) untuk memberikan hak `GRANT UPDATE, DELETE` kepada `authenticated` serta menambahkan RLS policies yang mengizinkan admin (`public.has_role(auth.uid(), 'admin')`) melakukan hapus/edit transaksi secara permanen di database.
+
 ---
 
 ## Rincian Verifikasi & Validasi
