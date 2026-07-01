@@ -329,7 +329,13 @@ function WarehousePage() {
                     year: "numeric",
                   })}
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[200px] sm:max-w-xs md:max-w-md">
+                  {entry.stock_movements
+                    .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
+                    .filter(Boolean)
+                    .join(", ")}
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
                   {entry.stock_movements.length} produk ·{" "}
                   {entry.stock_movements.reduce(
                     (sum: number, movement: any) => sum + movement.quantity,

@@ -207,7 +207,15 @@ function SettingsPage() {
 
   const { data: productList = [] } = useQuery({
     queryKey: ["products_for_event"],
-    queryFn: async () => (await supabase.from("products").select("id,name,price").order("name")).data ?? [],
+    queryFn: async () => {
+      const { data } = await supabase.from("products").select("id,name,price,category").order("name");
+      return (
+        data?.filter(
+          (p: any) =>
+            !p.category?.startsWith("deleted_") && !p.name?.toUpperCase().startsWith("[GUDANG] ")
+        ) ?? []
+      );
+    },
   });
 
   const [evForm, setEvForm] = useState({
@@ -567,7 +575,15 @@ function EventRow({ ev, today, describe, onDelete }: { ev: any; today: string; d
 
   const { data: products = [] } = useQuery({
     queryKey: ["products_for_event"],
-    queryFn: async () => (await supabase.from("products").select("id,name,price").order("name")).data ?? [],
+    queryFn: async () => {
+      const { data } = await supabase.from("products").select("id,name,price,category").order("name");
+      return (
+        data?.filter(
+          (p: any) =>
+            !p.category?.startsWith("deleted_") && !p.name?.toUpperCase().startsWith("[GUDANG] ")
+        ) ?? []
+      );
+    },
   });
   const { data: items = [] } = useQuery({
     queryKey: ["event_items", ev.id],

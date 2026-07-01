@@ -77,7 +77,7 @@ function Dashboard() {
         supabase.from("transaction_items").select("*"),
         supabase.from("products").select("*"),
         supabase.from("stock_entries").select("*").gte("restock_date", since.toISOString().slice(0, 10)),
-        supabase.from("stock_movements").select("*"),
+        supabase.from("stock_movements").select("*, products(name)"),
       ]);
       return {
         transactions: tx.data ?? [],
@@ -677,11 +677,11 @@ function Dashboard() {
                         Tanggal: {entry.restock_date} | Ongkir: {rupiah(entry.shipping_cost)}
                       </div>
                       <div className="pl-2 border-l-2 border-primary/20 space-y-1 mt-1">
-                        {movements.map((m) => {
-                          const prod = products.find((p) => p.id === m.product_id);
+                        {movements.map((m: any) => {
+                          const prodName = (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, "");
                           return (
                             <div key={m.id} className="flex justify-between text-xs text-muted-foreground">
-                              <span>{(prod?.name ?? "—").replace(/^\[GUDANG\]\s*/, "")} ({m.quantity} pcs)</span>
+                              <span>{prodName || "—"} ({m.quantity} pcs)</span>
                               <span>{rupiah(m.quantity * m.initial_price)}</span>
                             </div>
                           );
