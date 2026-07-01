@@ -59,13 +59,17 @@ Berikut adalah ringkasan seluruh perubahan akhir yang telah diimplementasikan da
      - Produk yang telah di-softdelete otomatis disembunyikan dari daftar menu, kasir, dan gudang, sehingga laporan penjualan historis tetap terjaga utuh tanpa merusak integritas database.
 
 9. **Modul Pengeditan, Penghapusan & Cetak Ulang Transaksi di Dashboard**:
-   - Di [dashboard.tsx](file:///Users/roughtell/amichicken/src/routes/_authenticated/dashboard.tsx), modal rincian card **Pemasukan** kini interaktif dan memiliki fitur manajerial transaksi yang lengkap:
+    - Di [dashboard.tsx](file:///Users/roughtell/amichicken/src/routes/_authenticated/dashboard.tsx), modal rincian card **Pemasukan** kini interaktif dan memiliki fitur manajerial transaksi yang lengkap:
      - **Klik untuk Membuka Detail**: Setiap baris transaksi di dalam popup pemasukan sekarang dapat diklik untuk membuka panel editor dua-kolom premium yang melebar secara dinamis (`max-w-3xl`).
      - **Pratinjau Struk Langsung (Live Receipt Preview)**: Menampilkan pratinjau struk fisik persis seperti yang akan dicetak/dibagikan menggunakan komponen `<Receipt />`.
      - **Formulir Pengeditan Transaksi**: Kasir/Admin dapat mengedit metode pembayaran (Tunai/QRIS), nominal uang tunai yang diterima (kembalian dihitung secara realtime), blok rumah pembeli, serta nama partner bisnis. Perubahan langsung disimpan ke database Supabase dan memperbarui visual grafik dashboard secara instan.
      - **Cetak Ulang Struk (Reprint)**: Tombol "Cetak Thermal" untuk mencetak ulang struk secara langsung menggunakan printer Bluetooth yang terhubung.
      - **Bagikan Ulang Struk**: Tombol "Bagikan Struk" untuk membagikan/menyalin struk digital dalam bentuk gambar ke WhatsApp.
      - **Penghapusan Transaksi dengan Pengembalian Stok Otomatis**: Tombol "Hapus Transaksi" (warna merah) untuk menghapus riwayat penjualan tersebut. Sistem akan **mengembalikan stok produk secara otomatis** ke jumlah semula sebelum transaksi terjadi sebelum menghapus baris item dan data transaksi dari database.
+
+10. **Perbaikan Simpan Pengeluaran Gudang & Sinkronisasi Dashboard**:
+    - **Perbaikan Constraint Database**: Menambahkan file migrasi database baru [20260701000000_add_gudang_category.sql](file:///Users/roughtell/amichicken/supabase/migrations/20260701000000_add_gudang_category.sql) untuk memperbarui check constraint `products_category_check` pada tabel `products`. Constraint baru kini mengizinkan kategori `"gudang"` serta kategori soft-delete (`deleted_%`). Hal ini memperbaiki error simpan (gagal menyimpan) saat admin menginput pengeluaran (belanjaan baru) pada halaman gudang.
+    - **Sinkronisasi Pendapatan Dashboard**: Dengan berhasil disimpannya data belanjaan gudang ke database (`stock_entries` dan `stock_movements`), total biaya pengeluaran akan otomatis terakumulasi secara tepat. Pada halaman Dashboard, nilai **Pengeluaran** akan terisi secara dinamis, sehingga otomatis mengurangi **Pemasukan** dan menghasilkan nilai **Pendapatan Bersih** yang akurat dan up-to-date.
 
 ---
 
