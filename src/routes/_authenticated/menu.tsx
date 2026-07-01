@@ -30,7 +30,9 @@ function MenuPage() {
     queryFn: async () => (await supabase.from("products").select("*").order("name")).data ?? [],
   });
 
-  const visibleProducts = products.filter((p: any) => !p.category?.startsWith("deleted_"));
+  const visibleProducts = products.filter(
+    (p: any) => !p.category?.startsWith("deleted_") && !p.name?.startsWith("[GUDANG] ")
+  );
 
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState({

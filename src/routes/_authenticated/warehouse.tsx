@@ -70,15 +70,16 @@ function WarehousePage() {
         throw new Error("Produk yang sama tidak boleh dimasukkan dua kali");
       const { data: u } = await supabase.auth.getUser();
 
-      // Cari atau buat produk kategori "gudang" secara dinamis
+      // Cari atau buat produk secara dinamis menggunakan kategori 'customer' dengan prefix '[GUDANG] '
       const resolvedMovements = [];
       for (const line of validLines) {
         const nameClean = line.product_name.trim();
+        const prefixedName = `[GUDANG] ${nameClean}`;
         let { data: existingProd } = await supabase
           .from("products")
           .select("id")
-          .eq("name", nameClean)
-          .eq("category", "gudang")
+          .eq("name", prefixedName)
+          .eq("category", "customer")
           .maybeSingle();
 
         let prodId = existingProd?.id;
@@ -86,8 +87,8 @@ function WarehousePage() {
           const { data: newProd, error: newProdErr } = await supabase
             .from("products")
             .insert({
-              name: nameClean,
-              category: "gudang",
+              name: prefixedName,
+              category: "customer",
               price: 0,
               stock: 0,
             })
@@ -174,7 +175,7 @@ function WarehousePage() {
     setShippingCost(String(entry.shipping_cost));
     setLines(
       entry.stock_movements.map((movement: any) => ({
-        product_name: movement.products?.name ?? "",
+        product_name: (movement.products?.name ?? "").replace(/^\[GUDANG\]\s*/, ""),
         quantity: String(movement.quantity),
         initial_price: String(movement.initial_price),
       })),
@@ -390,7 +391,9 @@ function WarehousePage() {
                 {selectedEntry.stock_movements.map((movement: any) => (
                   <div key={movement.id} className="flex justify-between gap-4">
                     <div>
-                      <div className="font-medium">{movement.products?.name ?? "—"}</div>
+                      <div className="font-medium">
+                        {(movement.products?.name ?? "—").replace(/^\[GUDANG\]\s*/, "")}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {movement.quantity} × {rupiah(movement.initial_price)}
                       </div>

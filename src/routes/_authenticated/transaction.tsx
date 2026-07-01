@@ -162,6 +162,7 @@ function TransactionPage() {
     return products.filter(
       (product) =>
         product.category === saleCategory &&
+        !product.name.startsWith("[GUDANG] ") &&
         (term.length < 3 || product.name.toLocaleLowerCase("id-ID").includes(term)),
     );
   }, [products, saleCategory, search]);

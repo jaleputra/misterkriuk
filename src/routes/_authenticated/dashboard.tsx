@@ -681,7 +681,7 @@ function Dashboard() {
                           const prod = products.find((p) => p.id === m.product_id);
                           return (
                             <div key={m.id} className="flex justify-between text-xs text-muted-foreground">
-                              <span>{prod?.name ?? "—"} ({m.quantity} pcs)</span>
+                              <span>{(prod?.name ?? "—").replace(/^\[GUDANG\]\s*/, "")} ({m.quantity} pcs)</span>
                               <span>{rupiah(m.quantity * m.initial_price)}</span>
                             </div>
                           );
