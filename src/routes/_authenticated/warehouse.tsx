@@ -322,18 +322,18 @@ function WarehousePage() {
               className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card"
             >
               <div>
-                <div className="font-medium">
+                <div className="font-semibold text-sm sm:text-base text-foreground">
+                  {entry.stock_movements
+                    .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
+                    .filter(Boolean)
+                    .join(", ")}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
                   {new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", {
                     day: "numeric",
                     month: "long",
                     year: "numeric",
                   })}
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[200px] sm:max-w-xs md:max-w-md">
-                  {entry.stock_movements
-                    .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
-                    .filter(Boolean)
-                    .join(", ")}
                 </div>
                 <div className="text-[10px] text-muted-foreground mt-0.5">
                   {entry.stock_movements.length} produk ·{" "}
