@@ -358,11 +358,7 @@ function Dashboard() {
           label="Pemasukan"
           value={rupiah(totalRevenue)}
           sub={`${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
-          onClick={() => setDetailModal({
-            open: true,
-            title: "Detail Pemasukan",
-            type: "pemasukan",
-          })}
+          onClick={() => navigate({ to: "/income-details" })}
         />
         <Stat
           icon={TrendingUp}
