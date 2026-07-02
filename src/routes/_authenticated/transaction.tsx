@@ -641,8 +641,8 @@ function TransactionPage() {
                 </TabsContent>
                 <TabsContent value="qris" className="pt-3">
                   {(() => {
-                    const dbQrisPayload = settings?.qris_payload;
-                    const dbQrisImageUrl = settings?.qris_image_url;
+                    const dbQrisPayload = (settings as any)?.qris_payload;
+                    const dbQrisImageUrl = (settings as any)?.qris_image_url;
                     
                     const localQrisPayload = typeof window !== "undefined" ? localStorage.getItem("qris_payload") : "";
                     const localQrisImageUrl = typeof window !== "undefined" ? localStorage.getItem("qris_image_url") : "";
