@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function Dashboard() {
+  const navigate = useNavigate();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
   const [detailModal, setDetailModal] = useState<{
     open: boolean;
@@ -357,11 +358,7 @@ function Dashboard() {
           label="Pemasukan"
           value={rupiah(totalRevenue)}
           sub={`${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
-          onClick={() => setDetailModal({
-            open: true,
-            title: "Detail Pemasukan",
-            type: "pemasukan",
-          })}
+          onClick={() => navigate({ to: "/income-details" })}
         />
         <Stat
           icon={TrendingUp}
