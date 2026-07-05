@@ -57,9 +57,33 @@ function IncomeDetails() {
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
 
-  const txs = data?.transactions ?? [];
+  const allTxs = data?.transactions ?? [];
   const items = data?.items ?? [];
   const products = data?.products ?? [];
+
+  const txs = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("id-ID");
+    if (term.length < 3) return allTxs;
+    return allTxs.filter((t) => {
+      const itemNames = items
+        .filter((i) => i.transaction_id === t.id)
+        .map((i) => (i.product_name ?? "").toLocaleLowerCase("id-ID"))
+        .join(" ");
+      const hay = [
+        t.id,
+        t.buyer_name ?? "",
+        t.house_block ?? "",
+        t.partner_name ?? "",
+        t.payment_method ?? "",
+        String(t.total ?? ""),
+        new Date(t.created_at).toLocaleString("id-ID"),
+        itemNames,
+      ]
+        .join(" ")
+        .toLocaleLowerCase("id-ID");
+      return hay.includes(term);
+    });
+  }, [allTxs, items, search]);
 
   const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
 
