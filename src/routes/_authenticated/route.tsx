@@ -19,7 +19,8 @@ const TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/menu": "Input Menu",
   "/transaction": "Transaksi",
-  "/warehouse": "Gudang",
+  "/warehouse": "Pengeluaran",
+  "/income-details": "Detail Pemasukan",
   "/settings": "Pengaturan",
 };
 
