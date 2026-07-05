@@ -288,6 +288,7 @@ function TransactionPage() {
   });
 
   const CATEGORIES: { value: string; label: string }[] = [
+    { value: "all", label: "Semua" },
     { value: "customer", label: "Customer" },
     { value: "partner", label: "Partner" },
     { value: "geprek", label: "Geprek" },
