@@ -16,7 +16,7 @@ import {
 import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PackagePlus, History, Plus, Trash2, Pencil, Eye } from "lucide-react";
+import { PackagePlus, History, Plus, Trash2, Pencil, Eye, Search } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/warehouse")({
   ssr: false,
@@ -48,6 +48,26 @@ function WarehousePage() {
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredEntries = (() => {
+    const term = search.trim().toLocaleLowerCase("id-ID");
+    if (term.length < 3) return entries as any[];
+    return (entries as any[]).filter((entry) => {
+      const names = entry.stock_movements
+        .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
+        .join(" ");
+      const hay = [
+        names,
+        entry.restock_date,
+        new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
+        String(entry.shipping_cost ?? ""),
+      ]
+        .join(" ")
+        .toLocaleLowerCase("id-ID");
+      return hay.includes(term);
+    });
+  })();
 
   const reset = () => {
     setRestockDate(new Date().toISOString().slice(0, 10));
@@ -313,10 +333,22 @@ function WarehousePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+              placeholder="Ketik minimal 3 huruf untuk mencari riwayat (produk, tanggal, ongkir)"
+            />
+          </div>
           {entries.length === 0 && (
             <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>
           )}
-          {entries.map((entry: any) => (
+          {entries.length > 0 && filteredEntries.length === 0 && (
+            <p className="text-sm text-muted-foreground">Tidak ada riwayat yang cocok.</p>
+          )}
+          {filteredEntries.map((entry: any) => (
             <div
               key={entry.id}
               className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card"

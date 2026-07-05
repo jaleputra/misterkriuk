@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X } from "lucide-react";
+import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
@@ -22,6 +22,7 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 
 function IncomeDetails() {
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
+  const [search, setSearch] = useState("");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const qc = useQueryClient();
 
@@ -56,9 +57,33 @@ function IncomeDetails() {
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
 
-  const txs = data?.transactions ?? [];
+  const allTxs = data?.transactions ?? [];
   const items = data?.items ?? [];
   const products = data?.products ?? [];
+
+  const txs = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("id-ID");
+    if (term.length < 3) return allTxs;
+    return allTxs.filter((t) => {
+      const itemNames = items
+        .filter((i) => i.transaction_id === t.id)
+        .map((i) => (i.product_name ?? "").toLocaleLowerCase("id-ID"))
+        .join(" ");
+      const hay = [
+        t.id,
+        t.buyer_name ?? "",
+        t.house_block ?? "",
+        t.partner_name ?? "",
+        t.payment_method ?? "",
+        String(t.total ?? ""),
+        new Date(t.created_at).toLocaleString("id-ID"),
+        itemNames,
+      ]
+        .join(" ")
+        .toLocaleLowerCase("id-ID");
+      return hay.includes(term);
+    });
+  }, [allTxs, items, search]);
 
   const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
 
@@ -250,6 +275,16 @@ function IncomeDetails() {
         </div>
       </div>
 
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+          placeholder="Ketik minimal 3 huruf untuk mencari (nama pembeli, blok, produk, metode, dll.)"
+        />
+      </div>
+
       <Card>
         <CardContent className="p-4 flex justify-between items-center">
           <div>
@@ -306,7 +341,20 @@ function IncomeDetails() {
           {selectedTx && (
             <div className="grid md:grid-cols-2 gap-4">
               <div className="border rounded-lg p-2 bg-muted/20">
-                <Receipt tx={{ ...selectedTx, items: editItems }} settings={settings} />
+                <Receipt
+                  tx={{
+                    ...selectedTx,
+                    items: editItems,
+                    total: currentTotal,
+                    payment_method: editForm.payment_method,
+                    cash_received: editForm.payment_method === "cash" ? Number(editForm.cash_received) || 0 : null,
+                    change_amount: editForm.payment_method === "cash" ? Math.max(0, (Number(editForm.cash_received) || 0) - currentTotal) : null,
+                    buyer_name: editForm.buyer_name || null,
+                    house_block: editForm.house_block || null,
+                    partner_name: editForm.partner_name || null,
+                  }}
+                  settings={settings}
+                />
               </div>
 
               <div className="space-y-4">

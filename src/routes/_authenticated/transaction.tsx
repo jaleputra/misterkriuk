@@ -161,7 +161,7 @@ function TransactionPage() {
     const term = search.trim().toLocaleLowerCase("id-ID");
     return products.filter(
       (product) =>
-        product.category === saleCategory &&
+        (saleCategory === "all" || product.category === saleCategory) &&
         !product.name.startsWith("[GUDANG] ") &&
         (term.length < 3 || product.name.toLocaleLowerCase("id-ID").includes(term)),
     );
@@ -234,7 +234,7 @@ function TransactionPage() {
           cash_received: payMethod === "cash" ? Number(cashReceived) : null,
           change_amount: payMethod === "cash" ? change : null,
           cashier_id: u.user?.id,
-          sale_category: saleCategory,
+          sale_category: saleCategory === "all" ? (cart[0]?.product.category ?? "customer") : saleCategory,
           partner_name: saleCategory === "partner" ? partnerName.trim() : null,
           buyer_name: null,
           house_block: houseBlock.trim() || null,
@@ -288,6 +288,7 @@ function TransactionPage() {
   });
 
   const CATEGORIES: { value: string; label: string }[] = [
+    { value: "all", label: "Semua" },
     { value: "customer", label: "Customer" },
     { value: "partner", label: "Partner" },
     { value: "geprek", label: "Geprek" },
