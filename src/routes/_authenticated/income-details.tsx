@@ -22,6 +22,7 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 
 function IncomeDetails() {
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
+  const [search, setSearch] = useState("");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const qc = useQueryClient();
 
