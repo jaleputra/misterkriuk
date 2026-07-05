@@ -341,7 +341,20 @@ function IncomeDetails() {
           {selectedTx && (
             <div className="grid md:grid-cols-2 gap-4">
               <div className="border rounded-lg p-2 bg-muted/20">
-                <Receipt tx={{ ...selectedTx, items: editItems }} settings={settings} />
+                <Receipt
+                  tx={{
+                    ...selectedTx,
+                    items: editItems,
+                    total: currentTotal,
+                    payment_method: editForm.payment_method,
+                    cash_received: editForm.payment_method === "cash" ? Number(editForm.cash_received) || 0 : null,
+                    change_amount: editForm.payment_method === "cash" ? Math.max(0, (Number(editForm.cash_received) || 0) - currentTotal) : null,
+                    buyer_name: editForm.buyer_name || null,
+                    house_block: editForm.house_block || null,
+                    partner_name: editForm.partner_name || null,
+                  }}
+                  settings={settings}
+                />
               </div>
 
               <div className="space-y-4">
