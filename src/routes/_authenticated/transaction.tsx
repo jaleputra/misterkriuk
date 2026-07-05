@@ -150,7 +150,7 @@ function TransactionPage() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [payMethod, setPayMethod] = useState<"cash" | "qris">("cash");
   const [cashReceived, setCashReceived] = useState("");
-  const [saleCategory, setSaleCategory] = useState<"customer" | "partner">("customer");
+  const [saleCategory, setSaleCategory] = useState<string>("customer");
   const [partnerName, setPartnerName] = useState("");
   const [checkoutStep, setCheckoutStep] = useState<"block" | "payment">("block");
   const [houseBlock, setHouseBlock] = useState("");
