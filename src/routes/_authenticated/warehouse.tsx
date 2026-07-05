@@ -48,6 +48,26 @@ function WarehousePage() {
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredEntries = (() => {
+    const term = search.trim().toLocaleLowerCase("id-ID");
+    if (term.length < 3) return entries as any[];
+    return (entries as any[]).filter((entry) => {
+      const names = entry.stock_movements
+        .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
+        .join(" ");
+      const hay = [
+        names,
+        entry.restock_date,
+        new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
+        String(entry.shipping_cost ?? ""),
+      ]
+        .join(" ")
+        .toLocaleLowerCase("id-ID");
+      return hay.includes(term);
+    });
+  })();
 
   const reset = () => {
     setRestockDate(new Date().toISOString().slice(0, 10));
