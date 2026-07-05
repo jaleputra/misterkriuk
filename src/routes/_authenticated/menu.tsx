@@ -6,13 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { rupiah } from "@/lib/format";
 import { Pencil, Trash2, Plus, ImagePlus, Drumstick, X } from "lucide-react";
@@ -218,18 +211,25 @@ function MenuPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Kategori Produk</Label>
-              <Select
-                value={form.category}
-                onValueChange={(category) => setForm({ ...form, category })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="customer">Customer</SelectItem>
-                  <SelectItem value="partner">Partner</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "customer", label: "Customer" },
+                  { value: "partner", label: "Partner" },
+                  { value: "geprek", label: "Geprek" },
+                  { value: "sauce", label: "Sauce" },
+                  { value: "drink", label: "Drink" },
+                ].map((c) => (
+                  <Button
+                    key={c.value}
+                    type="button"
+                    size="sm"
+                    variant={form.category === c.value ? "default" : "outline"}
+                    onClick={() => setForm({ ...form, category: c.value })}
+                  >
+                    {c.label}
+                  </Button>
+                ))}
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Stok</Label>

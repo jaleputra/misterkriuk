@@ -150,7 +150,7 @@ function TransactionPage() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [payMethod, setPayMethod] = useState<"cash" | "qris">("cash");
   const [cashReceived, setCashReceived] = useState("");
-  const [saleCategory, setSaleCategory] = useState<"customer" | "partner">("customer");
+  const [saleCategory, setSaleCategory] = useState<string>("customer");
   const [partnerName, setPartnerName] = useState("");
   const [checkoutStep, setCheckoutStep] = useState<"block" | "payment">("block");
   const [houseBlock, setHouseBlock] = useState("");
@@ -287,25 +287,17 @@ function TransactionPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const CATEGORIES: { value: string; label: string }[] = [
+    { value: "customer", label: "Customer" },
+    { value: "partner", label: "Partner" },
+    { value: "geprek", label: "Geprek" },
+    { value: "sauce", label: "Sauce" },
+    { value: "drink", label: "Drink" },
+  ];
+
   const ProductGrid = (
     <>
-      <div className="mb-3 grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
-        <Select
-          value={saleCategory}
-          onValueChange={(value) => {
-            setSaleCategory(value as "customer" | "partner");
-            setCart([]);
-            setPartnerName("");
-          }}
-        >
-          <SelectTrigger aria-label="Kategori checkout">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="customer">Customer</SelectItem>
-            <SelectItem value="partner">Partner</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="mb-3 space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -314,6 +306,23 @@ function TransactionPage() {
             className="pl-9"
             placeholder="Ketik minimal 3 huruf untuk mencari produk"
           />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {CATEGORIES.map((cat) => (
+            <Button
+              key={cat.value}
+              type="button"
+              size="sm"
+              variant={saleCategory === cat.value ? "default" : "outline"}
+              onClick={() => {
+                setSaleCategory(cat.value);
+                setCart([]);
+                setPartnerName("");
+              }}
+            >
+              {cat.label}
+            </Button>
+          ))}
         </div>
       </div>
       {activeEvent && (
@@ -352,11 +361,11 @@ function TransactionPage() {
                   <Drumstick className="h-10 w-10 text-primary/70" />
                 )}
               </div>
-              <div className="flex-1 min-w-0 flex flex-col justify-between h-20">
-                <div className="font-bold text-sm sm:text-base md:text-lg leading-snug line-clamp-2">
+              <div className="flex-1 min-w-0 flex flex-col justify-between gap-1">
+                <div className="font-bold text-sm sm:text-base md:text-lg leading-snug break-words">
                   {p.name}
                 </div>
-                <div className="flex items-center justify-between mt-1">
+                <div className="flex items-center justify-between mt-1 flex-wrap gap-1">
                   <div className="flex items-baseline gap-2">
                     <span className="text-primary font-bold text-sm sm:text-base md:text-lg">{rupiah(p.price)}</span>
                     {activeEvent && p.originalPrice !== p.price && (
@@ -377,7 +386,7 @@ function TransactionPage() {
         })}
         {visibleProducts.length === 0 && (
           <div className="col-span-full text-center text-muted-foreground py-10">
-            Tidak ada produk {saleCategory === "partner" ? "partner" : "customer"} yang sesuai.
+            Tidak ada produk di kategori ini.
           </div>
         )}
       </div>
