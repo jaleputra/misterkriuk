@@ -161,7 +161,7 @@ function TransactionPage() {
     const term = search.trim().toLocaleLowerCase("id-ID");
     return products.filter(
       (product) =>
-        product.category === saleCategory &&
+        (saleCategory === "all" || product.category === saleCategory) &&
         !product.name.startsWith("[GUDANG] ") &&
         (term.length < 3 || product.name.toLocaleLowerCase("id-ID").includes(term)),
     );
