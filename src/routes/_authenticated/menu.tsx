@@ -218,18 +218,25 @@ function MenuPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Kategori Produk</Label>
-              <Select
-                value={form.category}
-                onValueChange={(category) => setForm({ ...form, category })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="customer">Customer</SelectItem>
-                  <SelectItem value="partner">Partner</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "customer", label: "Customer" },
+                  { value: "partner", label: "Partner" },
+                  { value: "geprek", label: "Geprek" },
+                  { value: "sauce", label: "Sauce" },
+                  { value: "drink", label: "Drink" },
+                ].map((c) => (
+                  <Button
+                    key={c.value}
+                    type="button"
+                    size="sm"
+                    variant={form.category === c.value ? "default" : "outline"}
+                    onClick={() => setForm({ ...form, category: c.value })}
+                  >
+                    {c.label}
+                  </Button>
+                ))}
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Stok</Label>
