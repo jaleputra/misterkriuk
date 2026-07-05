@@ -16,7 +16,7 @@ import {
 import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PackagePlus, History, Plus, Trash2, Pencil, Eye } from "lucide-react";
+import { PackagePlus, History, Plus, Trash2, Pencil, Eye, Search } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/warehouse")({
   ssr: false,
