@@ -333,10 +333,22 @@ function WarehousePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+              placeholder="Ketik minimal 3 huruf untuk mencari riwayat (produk, tanggal, ongkir)"
+            />
+          </div>
           {entries.length === 0 && (
             <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>
           )}
-          {entries.map((entry: any) => (
+          {entries.length > 0 && filteredEntries.length === 0 && (
+            <p className="text-sm text-muted-foreground">Tidak ada riwayat yang cocok.</p>
+          )}
+          {filteredEntries.map((entry: any) => (
             <div
               key={entry.id}
               className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card"
