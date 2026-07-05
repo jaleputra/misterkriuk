@@ -234,7 +234,7 @@ function TransactionPage() {
           cash_received: payMethod === "cash" ? Number(cashReceived) : null,
           change_amount: payMethod === "cash" ? change : null,
           cashier_id: u.user?.id,
-          sale_category: saleCategory,
+          sale_category: saleCategory === "all" ? (cart[0]?.product.category ?? "customer") : saleCategory,
           partner_name: saleCategory === "partner" ? partnerName.trim() : null,
           buyer_name: null,
           house_block: houseBlock.trim() || null,
