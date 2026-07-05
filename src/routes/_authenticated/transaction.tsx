@@ -151,6 +151,7 @@ function TransactionPage() {
   const [payMethod, setPayMethod] = useState<"cash" | "qris">("cash");
   const [cashReceived, setCashReceived] = useState("");
   const [saleCategory, setSaleCategory] = useState<string>("customer");
+  const [transactionType, setTransactionType] = useState<"customer" | "partner">("customer");
   const [partnerName, setPartnerName] = useState("");
   const [checkoutStep, setCheckoutStep] = useState<"block" | "payment">("block");
   const [houseBlock, setHouseBlock] = useState("");
@@ -220,7 +221,7 @@ function TransactionPage() {
   const checkout = useMutation({
     mutationFn: async () => {
       if (cart.length === 0) throw new Error("Keranjang kosong");
-      if (saleCategory === "partner" && !partnerName.trim())
+      if (transactionType === "partner" && !partnerName.trim())
         throw new Error("Nama partner wajib diisi");
       // buyer_name & house_block are optional
       if (payMethod === "cash" && Number(cashReceived) < total)
@@ -234,8 +235,8 @@ function TransactionPage() {
           cash_received: payMethod === "cash" ? Number(cashReceived) : null,
           change_amount: payMethod === "cash" ? change : null,
           cashier_id: u.user?.id,
-          sale_category: saleCategory === "all" ? (cart[0]?.product.category ?? "customer") : saleCategory,
-          partner_name: saleCategory === "partner" ? partnerName.trim() : null,
+          sale_category: transactionType,
+          partner_name: transactionType === "partner" ? partnerName.trim() : null,
           buyer_name: null,
           house_block: houseBlock.trim() || null,
         })
@@ -270,6 +271,7 @@ function TransactionPage() {
       setReceiptOpen(true);
       setCart([]);
       setCashReceived("");
+      setTransactionType("customer");
       setPartnerName("");
       setHouseBlock("");
       setDiscountValue("");
@@ -317,8 +319,6 @@ function TransactionPage() {
               variant={saleCategory === cat.value ? "default" : "outline"}
               onClick={() => {
                 setSaleCategory(cat.value);
-                setCart([]);
-                setPartnerName("");
               }}
             >
               {cat.label}
@@ -468,6 +468,7 @@ function TransactionPage() {
           disabled={cart.length === 0}
           onClick={() => {
             setCheckoutStep("block");
+            setTransactionType(saleCategory === "partner" ? "partner" : "customer");
             setCheckoutOpen(true);
           }}
         >
@@ -519,7 +520,24 @@ function TransactionPage() {
                 <DialogTitle>Informasi Pelanggan</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-3">
-                {saleCategory === "partner" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="transaction-type">Tipe Transaksi</Label>
+                  <Select
+                    value={transactionType}
+                    onValueChange={(v) => {
+                      setTransactionType(v as "customer" | "partner");
+                    }}
+                  >
+                    <SelectTrigger id="transaction-type">
+                      <SelectValue placeholder="Pilih tipe transaksi" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="customer">Customer</SelectItem>
+                      <SelectItem value="partner">Partner</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {transactionType === "partner" && (
                   <div className="space-y-1.5">
                     <Label htmlFor="partner-name">Nama Partner</Label>
                     <div className="relative">
@@ -587,7 +605,7 @@ function TransactionPage() {
                 <Button
                   className="flex-1"
                   onClick={() => {
-                    if (saleCategory === "partner" && !partnerName.trim()) {
+                    if (transactionType === "partner" && !partnerName.trim()) {
                       toast.warning("Nama partner wajib diisi");
                       return;
                     }

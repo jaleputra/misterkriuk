@@ -104,125 +104,160 @@ export function printReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfS
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
-  const { pdf, fileName } = createReceiptPdf(tx, settings);
-  pdf.save(fileName);
-  const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
-  const message = encodeURIComponent(
-    `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? customerInfo}. PDF struk sudah diunduh, silakan lampirkan file ${fileName}.`,
-  );
-  const whatsappWindow = window.open(`https://wa.me/?text=${message}`, "_blank");
-  if (!whatsappWindow) throw new Error("Izinkan pop-up untuk membuka WhatsApp");
+async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvasElement> {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "absolute";
+  iframe.style.width = "400px";
+  iframe.style.height = "800px";
+  iframe.style.border = "none";
+  iframe.style.visibility = "hidden";
+  document.body.appendChild(iframe);
+
+  const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!iframeDoc) {
+    throw new Error("Cannot access iframe document");
+  }
+
+  iframeDoc.open();
+  iframeDoc.write(`
+    <html>
+      <head>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 8px;
+            background: white;
+            color: black;
+          }
+          #receipt-print {
+            width: 280px;
+            padding: 12px;
+            background: white;
+            border: 1px solid black;
+            border-radius: 6px;
+            font-size: 12px;
+            box-sizing: border-box;
+          }
+          .center { text-align: center; }
+          .text-center { text-align: center; }
+          .font-bold { font-weight: bold; }
+          .text-sm { font-size: 14px; }
+          .text-lg { font-size: 18px; }
+          .mt-3 { margin-top: 12px; }
+          .mb-1 { margin-bottom: 4px; }
+          .my-2 { margin-top: 8px; margin-bottom: 8px; }
+          .flex { display: flex; }
+          .row { display: flex; }
+          .justify-between { justify-content: space-between; }
+          hr { border: none; border-top: 1px dashed black; margin: 8px 0; }
+          .border { border: 1px solid black; }
+          .p-1\\.5 { padding: 6px; }
+          .rounded { border-radius: 4px; }
+          .bg-black\\/5 { background-color: rgba(0, 0, 0, 0.05); }
+        </style>
+      </head>
+      <body>
+        <div id="receipt-print">
+          ${element.innerHTML}
+        </div>
+      </body>
+    </html>
+  `);
+  iframeDoc.close();
+
+  // Tunggu agar iframe selesai me-render
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const target = iframeDoc.getElementById("receipt-print");
+  if (!target) {
+    document.body.removeChild(iframe);
+    throw new Error("Target inside iframe not found");
+  }
+
+  const canvas = await html2canvas(target, {
+    scale: 2,
+    backgroundColor: "#ffffff",
+    logging: false,
+    useCORS: true,
+  });
+
+  document.body.removeChild(iframe);
+  return canvas;
 }
 
-function buildReceiptText(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings): string {
-  const shopName = settings?.shop_name ?? "AMI Fried Chicken";
-  const shopAddress = settings?.shop_address ? `${settings.shop_address}\n` : "";
-  const shopPhone = settings?.shop_phone ? `${settings.shop_phone}\n` : "";
-  
-  let text = `*${shopName.toUpperCase()}*\n`;
-  if (shopAddress) text += `${shopAddress}`;
-  if (shopPhone) text += `${shopPhone}`;
-  text += `--------------------------------\n`;
-  text += `No: ${tx.id.slice(0, 8).toUpperCase()}\n`;
-  text += `Tanggal: ${new Date(tx.created_at).toLocaleString("id-ID")}\n`;
-  if (tx.sale_category === "partner" && tx.partner_name) {
-    text += `Partner: ${tx.partner_name}\n`;
+export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
+  const { pdf, fileName } = createReceiptPdf(tx, settings);
+  const blob = pdf.output("blob");
+  const file = new File([blob], fileName, { type: "application/pdf" });
+
+  const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
+  const textMessage = `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? customerInfo}.`;
+
+  // 1. Coba gunakan Web Share API untuk membagikan file PDF secara langsung (sangat berguna di perangkat mobile/Safari)
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: fileName,
+        text: textMessage,
+      });
+      toast.success("Struk PDF berhasil dibagikan");
+      return;
+    } catch (shareErr) {
+      if (shareErr instanceof Error && shareErr.name === "AbortError") {
+        console.log("Sharing aborted by user");
+        return;
+      }
+      console.error("Web Share failed, falling back to download and link", shareErr);
+    }
   }
-  text += `--------------------------------\n`;
-  
-  tx.items.forEach((item) => {
-    text += `*${item.product_name}*\n`;
-    text += `  ${item.quantity} x ${rupiah(item.price)} = ${rupiah(item.subtotal)}\n`;
-  });
-  
-  text += `--------------------------------\n`;
-  if (Number(tx.discount_amount) > 0) {
-    text += `Diskon: -${rupiah(tx.discount_amount ?? 0)}\n`;
+
+  // 2. Fallback untuk Desktop / Browser yang tidak mendukung sharing file PDF langsung:
+  // a. Unduh file PDF secara otomatis
+  try {
+    pdf.save(fileName);
+    toast.success("PDF Struk berhasil diunduh secara otomatis.");
+  } catch (downloadErr) {
+    console.error("Download failed", downloadErr);
   }
-  text += `*TOTAL: ${rupiah(tx.total)}*\n`;
-  text += `Bayar: ${tx.payment_method.toUpperCase()}\n`;
-  if (tx.payment_method === "cash") {
-    text += `Tunai: ${rupiah(tx.cash_received ?? 0)}\n`;
-    text += `Kembalian: ${rupiah(tx.change_amount ?? 0)}\n`;
+
+  // b. Capture gambar struk via Iframe (aman dari error Tailwind 'lab' color) dan salin ke clipboard
+  let copiedToClipboard = false;
+  try {
+    const element = document.getElementById("receipt-print");
+    if (element) {
+      const canvas = await captureElementViaIframe(element);
+      const imgBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (imgBlob && navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [imgBlob.type]: imgBlob,
+          }),
+        ]);
+        copiedToClipboard = true;
+        toast.success("Gambar struk disalin ke clipboard! Silakan paste (Ctrl+V) di WhatsApp.");
+      }
+    }
+  } catch (err) {
+    console.error("Gagal menyalin gambar struk ke clipboard", err);
   }
-  text += `--------------------------------\n`;
-  text += `Terima kasih ${tx.buyer_name ?? "Pelanggan"}\n`;
-  if (tx.house_block) {
-    text += `*BLOK: ${tx.house_block.toUpperCase()}*\n`;
+
+  // c. Buka WhatsApp Web dengan pesan berisi informasi struk
+  const clipboardHint = copiedToClipboard 
+    ? "Gambar struk sudah disalin ke clipboard, silakan Paste (Ctrl+V) di chat WhatsApp." 
+    : `Silakan lampirkan file PDF ${fileName} yang telah diunduh.`;
+  const message = encodeURIComponent(
+    `${textMessage} ${clipboardHint}`
+  );
+  const whatsappUrl = `https://wa.me/?text=${message}`;
+  const whatsappWindow = window.open(whatsappUrl, "_blank");
+  if (!whatsappWindow) {
+    throw new Error("Izinkan pop-up untuk membuka WhatsApp secara otomatis");
   }
-  return text;
 }
 
 export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
-  const element = document.getElementById("receipt-print");
-  if (!element) {
-    throw new Error("Elemen struk tidak ditemukan");
-  }
-
-  // Simpan style asli
-  const originalStyle = element.getAttribute("style") || "";
-  
-  // Modifikasi style agar rapi saat dicapture (pastikan background putih, teks hitam, dan tanpa border)
-  element.setAttribute(
-    "style",
-    originalStyle +
-      "; background-color: #ffffff; color: #000000; padding: 16px; border: none; border-radius: 0;"
-  );
-
-  try {
-    const canvas = await html2canvas(element, {
-      scale: 2, // Tingkatkan resolusi agar teks tajam
-      backgroundColor: "#ffffff",
-      logging: false,
-      useCORS: true,
-    });
-
-    // Kembalikan style asli
-    element.setAttribute("style", originalStyle);
-
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) {
-      throw new Error("Gagal membuat file gambar struk");
-    }
-
-    const fileName = `struk-${tx.id.slice(0, 8).toUpperCase()}.png`;
-    
-    // Coba salin gambar ke clipboard agar kasir bisa langsung Paste (Ctrl+V) di chat WhatsApp
-    try {
-      if (navigator.clipboard && window.ClipboardItem) {
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            [blob.type]: blob,
-          }),
-        ]);
-        toast.success("Gambar struk disalin ke clipboard! Silakan paste di WhatsApp.");
-      }
-    } catch (clipErr) {
-      console.log("Clipboard copy not supported or failed", clipErr);
-    }
-
-    // Unduh gambar struk otomatis
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // Otomatis buka WhatsApp dengan rincian struk lengkap dalam bentuk teks
-    const receiptText = buildReceiptText(tx, settings);
-    const whatsappText = encodeURIComponent(receiptText);
-    const whatsappUrl = `https://wa.me/?text=${whatsappText}`;
-    const whatsappWindow = window.open(whatsappUrl, "_blank");
-    if (!whatsappWindow) {
-      toast.success("Gambar struk diunduh");
-      throw new Error("Izinkan pop-up untuk membuka WhatsApp secara otomatis");
-    }
-  } catch (err) {
-    element.setAttribute("style", originalStyle);
-    throw err;
-  }
+  // Delegasikan langsung ke shareReceiptPdf yang memproses penanganan hybrid (PDF / Image Clipboard Copy)
+  await shareReceiptPdf(tx, settings);
 }
