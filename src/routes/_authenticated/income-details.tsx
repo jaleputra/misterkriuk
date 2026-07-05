@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X } from "lucide-react";
+import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
