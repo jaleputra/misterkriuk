@@ -23,6 +23,7 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 function IncomeDetails() {
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
   const [search, setSearch] = useState("");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "cash" | "qris">("all");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const qc = useQueryClient();
 
@@ -62,9 +63,13 @@ function IncomeDetails() {
   const products = data?.products ?? [];
 
   const txs = useMemo(() => {
+    let filtered = allTxs;
+    if (paymentMethodFilter !== "all") {
+      filtered = filtered.filter((t) => t.payment_method === paymentMethodFilter);
+    }
     const term = search.trim().toLocaleLowerCase("id-ID");
-    if (term.length < 3) return allTxs;
-    return allTxs.filter((t) => {
+    if (term.length < 3) return filtered;
+    return filtered.filter((t) => {
       const itemNames = items
         .filter((i) => i.transaction_id === t.id)
         .map((i) => (i.product_name ?? "").toLocaleLowerCase("id-ID"))
@@ -83,7 +88,7 @@ function IncomeDetails() {
         .toLocaleLowerCase("id-ID");
       return hay.includes(term);
     });
-  }, [allTxs, items, search]);
+  }, [allTxs, items, search, paymentMethodFilter]);
 
   const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
 
@@ -160,7 +165,7 @@ function IncomeDetails() {
         price: Number(i.price),
         quantity: Number(i.quantity),
         subtotal: Number(i.price) * Number(i.quantity),
-        cost_price: i.cost_price ?? null,
+        cost_price: Number(i.cost_price ?? 0),
       }));
       const { error: insErr } = await supabase.from("transaction_items").insert(rows);
       if (insErr) throw insErr;
@@ -175,7 +180,7 @@ function IncomeDetails() {
         }
       }
 
-      const { error: txErr } = await supabase
+      const { data: updatedTx, error: txErr } = await supabase
         .from("transactions")
         .update({
           total: totalAmt,
@@ -186,8 +191,12 @@ function IncomeDetails() {
           partner_name: editForm.partner_name.trim() || null,
           buyer_name: editForm.buyer_name.trim() || null,
         })
-        .eq("id", selectedTxId);
+        .eq("id", selectedTxId)
+        .select();
       if (txErr) throw txErr;
+      if (!updatedTx || updatedTx.length === 0) {
+        throw new Error("Gagal memperbarui transaksi. Baris data tidak ditemukan atau Anda tidak memiliki izin RLS.");
+      }
     },
     onSuccess: () => {
       toast.success("Transaksi berhasil diperbarui");
@@ -258,6 +267,18 @@ function IncomeDetails() {
           <h1 className="text-xl font-bold">Detail Pemasukan</h1>
         </div>
         <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Metode:</span>
+          <Select value={paymentMethodFilter} onValueChange={(v: any) => setPaymentMethodFilter(v)}>
+            <SelectTrigger className="w-[110px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua</SelectItem>
+              <SelectItem value="cash">Cash</SelectItem>
+              <SelectItem value="qris">QRIS</SelectItem>
+            </SelectContent>
+          </Select>
+
           <span className="text-xs text-muted-foreground">Filter Tanggal:</span>
           <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
             <SelectTrigger className="w-[160px]">

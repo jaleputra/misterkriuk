@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { rupiah } from "@/lib/format";
-import { Pencil, Trash2, Plus, ImagePlus, Drumstick, X } from "lucide-react";
+import { Pencil, Trash2, Plus, ImagePlus, Drumstick, X, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/menu")({
@@ -289,6 +289,24 @@ function MenuPage() {
                 </div>
               </div>
               <div className="flex gap-1 shrink-0">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Gandakan"
+                  onClick={() => {
+                    setEditing(null);
+                    setForm({
+                      name: `${p.name} - Salinan`,
+                      price: String(p.price),
+                      stock: String(p.stock),
+                      image_url: p.image_url ?? "",
+                      category: p.category ?? "customer",
+                    });
+                    toast.info(`Menu "${p.name}" disalin. Silakan edit dan simpan sebagai menu baru.`);
+                  }}
+                >
+                  <Copy className="h-4 w-4 text-muted-foreground" />
+                </Button>
                 <Button
                   size="icon"
                   variant="ghost"

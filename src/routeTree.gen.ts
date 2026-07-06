@@ -14,9 +14,11 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedWarehouseRouteImport } from './routes/_authenticated/warehouse'
 import { Route as AuthenticatedTransactionRouteImport } from './routes/_authenticated/transaction'
+import { Route as AuthenticatedSoldProductsRouteImport } from './routes/_authenticated/sold-products'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedMenuRouteImport } from './routes/_authenticated/menu'
 import { Route as AuthenticatedIncomeDetailsRouteImport } from './routes/_authenticated/income-details'
+import { Route as AuthenticatedExpenseDetailsRouteImport } from './routes/_authenticated/expense-details'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 
 const AuthRoute = AuthRouteImport.update({
@@ -44,6 +46,12 @@ const AuthenticatedTransactionRoute =
     path: '/transaction',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSoldProductsRoute =
+  AuthenticatedSoldProductsRouteImport.update({
+    id: '/sold-products',
+    path: '/sold-products',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -60,6 +68,12 @@ const AuthenticatedIncomeDetailsRoute =
     path: '/income-details',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedExpenseDetailsRoute =
+  AuthenticatedExpenseDetailsRouteImport.update({
+    id: '/expense-details',
+    path: '/expense-details',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -70,9 +84,11 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/expense-details': typeof AuthenticatedExpenseDetailsRoute
   '/income-details': typeof AuthenticatedIncomeDetailsRoute
   '/menu': typeof AuthenticatedMenuRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/sold-products': typeof AuthenticatedSoldProductsRoute
   '/transaction': typeof AuthenticatedTransactionRoute
   '/warehouse': typeof AuthenticatedWarehouseRoute
 }
@@ -80,9 +96,11 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/expense-details': typeof AuthenticatedExpenseDetailsRoute
   '/income-details': typeof AuthenticatedIncomeDetailsRoute
   '/menu': typeof AuthenticatedMenuRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/sold-products': typeof AuthenticatedSoldProductsRoute
   '/transaction': typeof AuthenticatedTransactionRoute
   '/warehouse': typeof AuthenticatedWarehouseRoute
 }
@@ -92,9 +110,11 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/expense-details': typeof AuthenticatedExpenseDetailsRoute
   '/_authenticated/income-details': typeof AuthenticatedIncomeDetailsRoute
   '/_authenticated/menu': typeof AuthenticatedMenuRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/sold-products': typeof AuthenticatedSoldProductsRoute
   '/_authenticated/transaction': typeof AuthenticatedTransactionRoute
   '/_authenticated/warehouse': typeof AuthenticatedWarehouseRoute
 }
@@ -104,9 +124,11 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/expense-details'
     | '/income-details'
     | '/menu'
     | '/settings'
+    | '/sold-products'
     | '/transaction'
     | '/warehouse'
   fileRoutesByTo: FileRoutesByTo
@@ -114,9 +136,11 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/expense-details'
     | '/income-details'
     | '/menu'
     | '/settings'
+    | '/sold-products'
     | '/transaction'
     | '/warehouse'
   id:
@@ -125,9 +149,11 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/dashboard'
+    | '/_authenticated/expense-details'
     | '/_authenticated/income-details'
     | '/_authenticated/menu'
     | '/_authenticated/settings'
+    | '/_authenticated/sold-products'
     | '/_authenticated/transaction'
     | '/_authenticated/warehouse'
   fileRoutesById: FileRoutesById
@@ -175,6 +201,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTransactionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/sold-products': {
+      id: '/_authenticated/sold-products'
+      path: '/sold-products'
+      fullPath: '/sold-products'
+      preLoaderRoute: typeof AuthenticatedSoldProductsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -196,6 +229,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIncomeDetailsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/expense-details': {
+      id: '/_authenticated/expense-details'
+      path: '/expense-details'
+      fullPath: '/expense-details'
+      preLoaderRoute: typeof AuthenticatedExpenseDetailsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -208,18 +248,22 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedExpenseDetailsRoute: typeof AuthenticatedExpenseDetailsRoute
   AuthenticatedIncomeDetailsRoute: typeof AuthenticatedIncomeDetailsRoute
   AuthenticatedMenuRoute: typeof AuthenticatedMenuRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedSoldProductsRoute: typeof AuthenticatedSoldProductsRoute
   AuthenticatedTransactionRoute: typeof AuthenticatedTransactionRoute
   AuthenticatedWarehouseRoute: typeof AuthenticatedWarehouseRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedExpenseDetailsRoute: AuthenticatedExpenseDetailsRoute,
   AuthenticatedIncomeDetailsRoute: AuthenticatedIncomeDetailsRoute,
   AuthenticatedMenuRoute: AuthenticatedMenuRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedSoldProductsRoute: AuthenticatedSoldProductsRoute,
   AuthenticatedTransactionRoute: AuthenticatedTransactionRoute,
   AuthenticatedWarehouseRoute: AuthenticatedWarehouseRoute,
 }

@@ -34,6 +34,7 @@ import {
   Share2,
   Trash2,
   Save,
+  ShoppingBag,
 } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
@@ -73,11 +74,13 @@ function Dashboard() {
       }
       since.setHours(0, 0, 0, 0);
 
+      const sinceDateStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
+
       const [tx, items, prods, stockEntries, stockMovements] = await Promise.all([
         supabase.from("transactions").select("*").gte("created_at", since.toISOString()),
         supabase.from("transaction_items").select("*"),
         supabase.from("products").select("*"),
-        supabase.from("stock_entries").select("*").gte("restock_date", since.toISOString().slice(0, 10)),
+        supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr),
         supabase.from("stock_movements").select("*, products(name)"),
       ]);
       return {
@@ -196,7 +199,7 @@ function Dashboard() {
       
       const changeAmt = isCash ? Math.max(0, cashVal - totalAmt) : null;
       
-      const { error } = await supabase
+      const { data: updatedTx, error } = await supabase
         .from("transactions")
         .update({
           payment_method: editForm.payment_method,
@@ -205,8 +208,12 @@ function Dashboard() {
           change_amount: changeAmt,
           partner_name: editForm.partner_name.trim() || null,
         })
-        .eq("id", editingTxId);
+        .eq("id", editingTxId)
+        .select();
       if (error) throw error;
+      if (!updatedTx || updatedTx.length === 0) {
+        throw new Error("Gagal memperbarui transaksi. Baris data tidak ditemukan atau izin RLS ditolak.");
+      }
     },
     onSuccess: () => {
       toast.success("Transaksi berhasil diperbarui");
@@ -269,6 +276,48 @@ function Dashboard() {
 
   // Pendapatan Bersih
   const netIncome = useMemo(() => totalRevenue - totalExpenditure, [totalRevenue, totalExpenditure]);
+
+  // Jumlah Produk Terjual
+  const totalProductsSold = useMemo(() => {
+    const txIds = new Set(txs.map((t) => t.id));
+    return items
+      .filter((item) => txIds.has(item.transaction_id))
+      .reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+  }, [items, txs]);
+
+  // Informasi Pack (4 dada, 2 paha atas, 2 paha bawah, 2 sayap = 1 pack)
+  const packInfo = useMemo(() => {
+    const txIds = new Set(txs.map((t) => t.id));
+    const activeItems = items.filter((item) => txIds.has(item.transaction_id));
+
+    let dada = 0;
+    let pahaAtas = 0;
+    let pahaBawah = 0;
+    let sayap = 0;
+
+    activeItems.forEach((item) => {
+      const name = (item.product_name || "").toLowerCase();
+      const qty = Number(item.quantity ?? 0);
+      if (name.includes("dada")) {
+        dada += qty;
+      } else if (name.includes("paha atas")) {
+        pahaAtas += qty;
+      } else if (name.includes("paha bawah")) {
+        pahaBawah += qty;
+      } else if (name.includes("sayap")) {
+        sayap += qty;
+      }
+    });
+
+    const pDada = Math.floor(dada / 4);
+    const pPahaAtas = Math.floor(pahaAtas / 2);
+    const pPahaBawah = Math.floor(pahaBawah / 2);
+    const pSayap = Math.floor(sayap / 2);
+
+    const packs = Math.min(pDada, pPahaAtas, pPahaBawah, pSayap);
+
+    return { packs, dada, pahaAtas, pahaBawah, sayap };
+  }, [items, txs]);
 
   // Daily revenue line chart data
   const daily = useMemo(() => {
@@ -352,7 +401,7 @@ function Dashboard() {
       </div>
 
       {/* Simplified Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat
           icon={DollarSign}
           label="Pemasukan"
@@ -365,11 +414,7 @@ function Dashboard() {
           label="Pengeluaran"
           value={rupiah(totalExpenditure)}
           sub={`${stockEntries.length} Restok Gudang`}
-          onClick={() => setDetailModal({
-            open: true,
-            title: "Detail Pengeluaran",
-            type: "pengeluaran",
-          })}
+          onClick={() => navigate({ to: "/expense-details" })}
         />
         <Stat
           icon={BarChart3}
@@ -381,6 +426,13 @@ function Dashboard() {
             title: "Detail Pendapatan Bersih",
             type: "pendapatan",
           })}
+        />
+        <Stat
+          icon={ShoppingBag}
+          label="Jumlah Produk Terjual"
+          value={`${totalProductsSold} Pcs (${packInfo.packs} Pack)`}
+          sub={`Detail: D:${packInfo.dada} · PA:${packInfo.pahaAtas} · PB:${packInfo.pahaBawah} · S:${packInfo.sayap}`}
+          onClick={() => navigate({ to: "/sold-products", search: { dateFilter } })}
         />
       </div>
 

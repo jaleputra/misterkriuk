@@ -21,6 +21,8 @@ const TITLES: Record<string, string> = {
   "/transaction": "Transaksi",
   "/warehouse": "Pengeluaran",
   "/income-details": "Detail Pemasukan",
+  "/expense-details": "Detail Pengeluaran",
+  "/sold-products": "Detail Produk Terjual",
   "/settings": "Pengaturan",
 };
 
