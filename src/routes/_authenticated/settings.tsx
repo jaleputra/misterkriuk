@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 function SettingsPage() {
+  const { role } = useAuth();
   const qc = useQueryClient();
   const { data: settings } = useQuery({
     queryKey: ["printer_settings"],
@@ -294,6 +296,60 @@ function SettingsPage() {
     if (e.adjustment_type === "fixed_discount") return `Potongan ${rupiah(e.adjustment_value)}`;
     return `Harga jadi ${rupiah(e.adjustment_value)}`;
   };
+
+  if (role === "cashier") {
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Printer className="h-4 w-4" /> Printer Thermal
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Nama Printer</Label>
+                <Input value={form.printer_name} disabled placeholder="Belum terhubung" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Lebar Kertas</Label>
+                <Select value={String(form.paper_width)} disabled>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="58">58 mm</SelectItem>
+                    <SelectItem value="80">80 mm</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {printerConnected ? (
+                <Button variant="destructive" onClick={handleDisconnectPrinter} disabled={printerBusy}>
+                  Putuskan Printer
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={handleConnectPrinter} disabled={printerBusy}>
+                  Sambungkan Printer Bluetooth
+                </Button>
+              )}
+              <Button variant="secondary" onClick={handleTestPrint} disabled={!printerConnected || printerBusy}>
+                Test Printer
+              </Button>
+              <span className={`text-xs px-2 py-1 rounded-md ${printerConnected ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+                {printerConnected ? "Terhubung" : "Tidak terhubung"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Aktifkan Bluetooth lalu sambungkan printer thermal. Saat checkout, tombol "Cetak" akan langsung mengirim struk ke printer.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <Tabs defaultValue="store" className="space-y-4">

@@ -36,8 +36,17 @@ function AuthedLayout() {
     );
   }
 
-  // Cashier route guard: only /transaction
-  if (role === "cashier" && !pathname.startsWith("/transaction")) {
+  // Cashier route guard: allow transaction, warehouse, expense-details, settings, dashboard, income-details
+  const allowedCashierRoutes = [
+    "/transaction",
+    "/warehouse",
+    "/expense-details",
+    "/settings",
+    "/dashboard",
+    "/income-details"
+  ];
+  const isAllowed = allowedCashierRoutes.some((route) => pathname.startsWith(route));
+  if (role === "cashier" && !isAllowed) {
     if (typeof window !== "undefined") window.location.replace("/transaction");
     return null;
   }

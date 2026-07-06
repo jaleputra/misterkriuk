@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const navigate = useNavigate();
+  const { role } = useAuth();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
   const [detailModal, setDetailModal] = useState<{
     open: boolean;
@@ -405,21 +407,21 @@ function Dashboard() {
         <Stat
           icon={DollarSign}
           label="Pemasukan"
-          value={rupiah(totalRevenue)}
-          sub={`${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
+          value={role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}
+          sub={role === "cashier" ? `${txs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
           onClick={() => navigate({ to: "/income-details" })}
         />
         <Stat
           icon={TrendingUp}
           label="Pengeluaran"
-          value={rupiah(totalExpenditure)}
+          value={role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}
           sub={`${stockEntries.length} Restok Gudang`}
           onClick={() => navigate({ to: "/expense-details" })}
         />
         <Stat
           icon={BarChart3}
           label="Pendapatan Bersih"
-          value={rupiah(netIncome)}
+          value={role === "cashier" ? "XXXXX" : rupiah(netIncome)}
           sub="Pemasukan - Pengeluaran"
           onClick={() => setDetailModal({
             open: true,
@@ -436,102 +438,106 @@ function Dashboard() {
         />
       </div>
 
-      {/* Revenue Over Time Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Grafik Pendapatan Harian</CardTitle>
-        </CardHeader>
-        <CardContent className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={daily}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} />
-              <YAxis
-                stroke="var(--color-muted-foreground)"
-                fontSize={11}
-                tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-              />
-              <Tooltip
-                formatter={(v: number) => rupiah(v)}
-                contentStyle={{
-                  background: "var(--color-card)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: 8,
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="revenue"
-                name="Pendapatan"
-                stroke="var(--color-primary)"
-                strokeWidth={2.5}
-                dot={{ r: 3 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {role !== "cashier" && (
+        <>
+          {/* Revenue Over Time Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Grafik Pendapatan Harian</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={daily}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                  <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} />
+                  <YAxis
+                    stroke="var(--color-muted-foreground)"
+                    fontSize={11}
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={(v: number) => rupiah(v)}
+                    contentStyle={{
+                      background: "var(--color-card)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 8,
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    name="Pendapatan"
+                    stroke="var(--color-primary)"
+                    strokeWidth={2.5}
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-      {/* Bottom Chart Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Buyer House Block Bar Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Grafik Blok Rumah Pembeli (Pendapatan)</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={blockChartData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis type="number" stroke="var(--color-muted-foreground)" fontSize={11} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <YAxis
-                  type="category"
-                  dataKey="block"
-                  width={100}
-                  stroke="var(--color-muted-foreground)"
-                  fontSize={11}
-                />
-                <Tooltip
-                  formatter={(v: number) => rupiah(v)}
-                  contentStyle={{
-                    background: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: 8,
-                  }}
-                />
-                <Bar dataKey="revenue" name="Pemasukan" fill="var(--color-primary)" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          {/* Bottom Chart Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Buyer House Block Bar Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Grafik Blok Rumah Pembeli (Pendapatan)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={blockChartData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                    <XAxis type="number" stroke="var(--color-muted-foreground)" fontSize={11} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis
+                      type="category"
+                      dataKey="block"
+                      width={100}
+                      stroke="var(--color-muted-foreground)"
+                      fontSize={11}
+                    />
+                    <Tooltip
+                      formatter={(v: number) => rupiah(v)}
+                      contentStyle={{
+                        background: "var(--color-card)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: 8,
+                      }}
+                    />
+                    <Bar dataKey="revenue" name="Pemasukan" fill="var(--color-primary)" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
 
-        {/* Payment Methods Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Metode Pembayaran</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={payments} dataKey="value" nameKey="name" outerRadius={80} label>
-                  {payments.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(v: number) => rupiah(v)}
-                  contentStyle={{
-                    background: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: 8,
-                  }}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+            {/* Payment Methods Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Metode Pembayaran</CardTitle>
+              </CardHeader>
+              <CardContent className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={payments} dataKey="value" nameKey="name" outerRadius={80} label>
+                      {payments.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: number) => rupiah(v)}
+                      contentStyle={{
+                        background: "var(--color-card)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: 8,
+                      }}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
 
       {/* Details Dialog */}
       <Dialog
@@ -751,16 +757,16 @@ function Dashboard() {
             <div className="space-y-3 py-2 text-sm">
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-muted-foreground">Total Pemasukan</span>
-                <span className="font-semibold text-success">{rupiah(totalRevenue)}</span>
+                <span className="font-semibold text-success">{role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}</span>
               </div>
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-muted-foreground">Total Pengeluaran</span>
-                <span className="font-semibold text-destructive">{rupiah(totalExpenditure)}</span>
+                <span className="font-semibold text-destructive">{role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}</span>
               </div>
               <div className="flex justify-between items-center pt-2 text-base font-bold">
                 <span>Pendapatan Bersih</span>
                 <span className={netIncome >= 0 ? "text-success" : "text-destructive"}>
-                  {rupiah(netIncome)}
+                  {role === "cashier" ? "XXXXX" : rupiah(netIncome)}
                 </span>
               </div>
             </div>

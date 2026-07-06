@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 });
 
 function IncomeDetails() {
+  const { role } = useAuth();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
   const [search, setSearch] = useState("");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "cash" | "qris">("all");
@@ -310,7 +312,7 @@ function IncomeDetails() {
         <CardContent className="p-4 flex justify-between items-center">
           <div>
             <div className="text-xs text-muted-foreground">Total Pemasukan</div>
-            <div className="text-2xl font-bold text-success">{rupiah(totalRevenue)}</div>
+            <div className="text-2xl font-bold text-success">{role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}</div>
           </div>
           <div className="text-right text-xs text-muted-foreground">
             {txs.length} transaksi
