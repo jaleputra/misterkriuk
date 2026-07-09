@@ -440,7 +440,7 @@ function Dashboard() {
           icon={BarChart3}
           label="Pendapatan Bersih"
           value={role === "cashier" ? "XXXXX" : rupiah(netIncome)}
-          sub="Pemasukan - Pengeluaran"
+          sub={role === "cashier" ? "Cash: XXXXX · QRIS: XXXXX" : `Cash: ${rupiah(netCash)} · QRIS: ${rupiah(netQris)}`}
           onClick={() => setDetailModal({
             open: true,
             title: "Detail Pendapatan Bersih",
