@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
-import { FileText, Save, Wallet, TrendingDown, TrendingUp, Calculator } from "lucide-react";
+import { FileText, Save, Wallet, TrendingDown, TrendingUp, Calculator, CreditCard } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   ssr: false,
@@ -45,12 +45,16 @@ function ReportsPage() {
   });
 
   useEffect(() => {
-    setInitialCashInput(report?.initial_cash != null ? String(report.initial_cash) : "");
+    setInitialCashInput("");
     setNote(report?.note ?? "");
   }, [report, date]);
 
-  const dayStart = `${date}T00:00:00`;
-  const dayEnd = `${date}T23:59:59.999`;
+  const [dayStart, dayEnd] = useMemo(() => {
+    const [year, month, day] = date.split("-").map(Number);
+    const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+    return [start.toISOString(), end.toISOString()];
+  }, [date]);
 
   const { data: txs = [] } = useQuery({
     queryKey: ["reports_txs", date],
@@ -105,20 +109,29 @@ function ReportsPage() {
 
   const initialCash = Number(report?.initial_cash ?? 0);
   const todayResult = initialCash + totalIn - totalOut;
+  const totalCashResult = initialCash + cashIn - cashOut;
+  const totalQrisResult = qrisIn - qrisOut;
 
   const save = useMutation({
     mutationFn: async () => {
       const { data: u } = await supabase.auth.getUser();
-      const { error } = await supabase.from("daily_reports").upsert({
+      const payload: any = {
         report_date: date,
-        initial_cash: Number(initialCashInput || 0),
         note: note || null,
         created_by: u.user?.id,
-      });
+      };
+      
+      // Hanya simpan kas_awal jika belum pernah disimpan sebelumnya
+      if (report?.initial_cash == null) {
+        payload.initial_cash = Number(initialCashInput || 0);
+      }
+      
+      const { error } = await supabase.from("daily_reports").upsert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Laporan disimpan");
+      setInitialCashInput("");
       qc.invalidateQueries({ queryKey: ["daily_report", date] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -185,7 +198,8 @@ function ReportsPage() {
                   min="0"
                   value={initialCashInput}
                   onChange={(e) => setInitialCashInput(e.target.value)}
-                  placeholder="0"
+                  placeholder={report?.initial_cash != null ? rupiah(report.initial_cash) : "0"}
+                  disabled={report?.initial_cash != null || save.isPending}
                 />
               </div>
               <div className="space-y-1.5">
@@ -199,6 +213,71 @@ function ReportsPage() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Ringkasan Kas & QRIS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Tabel Cash (Tunai) */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-primary" />
+              Aliran Kas (Tunai)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full text-sm text-left border-collapse min-w-[360px]">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                    <th className="px-4 py-3 font-semibold text-center">Kas Awal</th>
+                    <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">Pemasukan Cash</th>
+                    <th className="px-4 py-3 font-semibold text-center text-destructive">Pengeluaran Cash</th>
+                    <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">Total Cash</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border font-medium">
+                  <tr className="hover:bg-muted/10 transition-colors">
+                    <td className="px-4 py-4 text-center">{rupiah(initialCash)}</td>
+                    <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">{rupiah(cashIn)}</td>
+                    <td className="px-4 py-4 text-center text-destructive">{rupiah(cashOut)}</td>
+                    <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">{rupiah(totalCashResult)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabel QRIS (Non-Tunai) */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-primary" />
+              Aliran QRIS (Non-Tunai)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full text-sm text-left border-collapse min-w-[300px]">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                    <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">Pemasukan QRIS</th>
+                    <th className="px-4 py-3 font-semibold text-center text-destructive">Pengeluaran QRIS</th>
+                    <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">Total QRIS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border font-medium">
+                  <tr className="hover:bg-muted/10 transition-colors">
+                    <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">{rupiah(qrisIn)}</td>
+                    <td className="px-4 py-4 text-center text-destructive">{rupiah(qrisOut)}</td>
+                    <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">{rupiah(totalQrisResult)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Card>

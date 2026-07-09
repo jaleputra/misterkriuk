@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { LogOut, Drumstick } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
 export function AppHeader({ title, role, email }: { title: string; role: string; email?: string }) {
@@ -13,11 +13,13 @@ export function AppHeader({ title, role, email }: { title: string; role: string;
     <header className="sticky top-0 z-30 border-b bg-card/95 backdrop-blur">
       <div className="mx-auto max-w-[1400px] w-full flex items-center justify-between px-3 sm:px-4 py-3">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0">
-            <Drumstick className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="Logo" 
+            className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0" 
+          />
           <div className="min-w-0">
-            <div className="text-xs sm:text-sm font-bold leading-tight truncate">AMI Fried Chicken</div>
+            <div className="text-xs sm:text-sm font-bold leading-tight truncate">Ayam Kriuk Ami Aneen</div>
             <div className="text-[10px] sm:text-xs text-muted-foreground leading-tight truncate">{title}</div>
           </div>
         </div>

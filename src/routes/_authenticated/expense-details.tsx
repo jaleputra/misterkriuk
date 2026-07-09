@@ -38,7 +38,7 @@ function ExpenseDetails() {
       else since.setFullYear(2020, 0, 1);
       since.setHours(0, 0, 0, 0);
 
-      const sinceDateStr = since.toISOString().slice(0, 10);
+      const sinceDateStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
 
       const { data: entriesData } = await supabase
         .from("stock_entries")

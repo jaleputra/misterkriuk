@@ -17,6 +17,7 @@ import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PackagePlus, History, Plus, Trash2, Pencil, Eye, Search } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/warehouse")({
   ssr: false,
@@ -25,6 +26,7 @@ export const Route = createFileRoute("/_authenticated/warehouse")({
 
 function WarehousePage() {
   const qc = useQueryClient();
+  const { role } = useAuth();
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: async () => (await supabase.from("products").select("*").order("name")).data ?? [],
@@ -222,7 +224,7 @@ function WarehousePage() {
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <PackagePlus className="h-4 w-4" /> {editingEntry ? "Edit Stok Masuk" : "Tambah Stok"}
+            <PackagePlus className="h-4 w-4" /> {editingEntry ? "Edit Pengeluaran" : "Pengeluaran"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -352,7 +354,7 @@ function WarehousePage() {
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <History className="h-4 w-4" /> Riwayat Stok Masuk
+            <History className="h-4 w-4" /> Riwayat Pengeluaran
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -376,51 +378,66 @@ function WarehousePage() {
               key={entry.id}
               className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card"
             >
-              <div>
+              <div className="space-y-0.5">
                 <div className="font-semibold text-sm sm:text-base text-foreground">
                   {entry.stock_movements
                     .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
                     .filter(Boolean)
                     .join(", ")}
                 </div>
-                <div className="text-xs text-muted-foreground mt-0.5">
+                <div className="text-xs text-muted-foreground">
                   {new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", {
                     day: "numeric",
                     month: "long",
                     year: "numeric",
                   })}
                 </div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">
+                <div className="text-[10px] text-muted-foreground">
                   {entry.stock_movements.length} produk ·{" "}
                   {entry.stock_movements.reduce(
                     (sum: number, movement: any) => sum + movement.quantity,
                     0,
                   )}{" "}
-                  pcs · Ongkir {rupiah(entry.shipping_cost)}
+                  pcs
                 </div>
               </div>
-              <div className="flex gap-1 shrink-0">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setSelectedEntry(entry)}
-                  aria-label="Lihat detail"
-                >
-                  <Eye className="h-4 w-4" />
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => edit(entry)} aria-label="Edit">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => {
-                    if (confirm("Hapus riwayat dan kurangi stok terkait?")) remove.mutate(entry.id);
-                  }}
-                  aria-label="Hapus"
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="font-semibold text-sm sm:text-base text-foreground">
+                  {rupiah(
+                    Number(entry.shipping_cost ?? 0) +
+                    entry.stock_movements.reduce(
+                      (s: number, m: any) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
+                      0
+                    )
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setSelectedEntry(entry)}
+                    aria-label="Lihat detail"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  {role === "admin" && (
+                    <>
+                      <Button size="icon" variant="ghost" onClick={() => edit(entry)} aria-label="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => {
+                          if (confirm("Hapus riwayat dan kurangi stok terkait?")) remove.mutate(entry.id);
+                        }}
+                        aria-label="Hapus"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -434,7 +451,7 @@ function WarehousePage() {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Detail Stok Masuk</DialogTitle>
+            <DialogTitle>Detail Pengeluaran</DialogTitle>
           </DialogHeader>
           {selectedEntry && (
             <div className="space-y-3 text-sm">
