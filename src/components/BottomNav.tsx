@@ -15,6 +15,7 @@ const items: NavItem[] = [
   { to: "/menu", label: "Menu", icon: UtensilsCrossed, roles: ["admin"] },
   { to: "/transaction", label: "Kasir", icon: ShoppingCart, roles: ["admin", "cashier"] },
   { to: "/warehouse", label: "Pengeluaran", icon: Warehouse, roles: ["admin", "cashier"] },
+  { to: "/reports", label: "Laporan", icon: FileText, roles: ["admin"] },
   { to: "/settings", label: "Setelan", icon: Settings, roles: ["admin", "cashier"] },
 ];
 
