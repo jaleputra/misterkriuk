@@ -24,6 +24,7 @@ const TITLES: Record<string, string> = {
   "/expense-details": "Detail Pengeluaran",
   "/sold-products": "Detail Produk Terjual",
   "/settings": "Pengaturan",
+  "/reports": "Laporan Harian",
 };
 
 function AuthedLayout() {
