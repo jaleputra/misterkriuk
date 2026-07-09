@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, UtensilsCrossed, ShoppingCart, Warehouse, Settings } from "lucide-react";
+import { LayoutDashboard, UtensilsCrossed, ShoppingCart, Warehouse, Settings, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AppRole } from "@/hooks/useAuth";
 
