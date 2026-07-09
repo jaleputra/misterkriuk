@@ -272,6 +272,7 @@ function WarehousePage() {
                 </Button>
               </div>
             </div>
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Daftar Produk</Label>
                 <Button
