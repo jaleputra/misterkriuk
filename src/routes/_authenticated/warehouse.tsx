@@ -253,7 +253,25 @@ function WarehousePage() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
+              <Label>Metode Pembayaran</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={paymentMethod === "cash" ? "default" : "outline"}
+                  onClick={() => setPaymentMethod("cash")}
+                >
+                  Cash
+                </Button>
+                <Button
+                  type="button"
+                  variant={paymentMethod === "qris" ? "default" : "outline"}
+                  onClick={() => setPaymentMethod("qris")}
+                >
+                  QRIS
+                </Button>
+              </div>
+            </div>
               <div className="flex items-center justify-between">
                 <Label>Daftar Produk</Label>
                 <Button
