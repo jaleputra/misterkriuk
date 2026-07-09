@@ -72,8 +72,6 @@ function WarehousePage() {
 
   const reset = () => {
     setRestockDate(new Date().toISOString().slice(0, 10));
-  const reset = () => {
-    setRestockDate(new Date().toISOString().slice(0, 10));
     setShippingCost("");
     setPaymentMethod("cash");
     setLines([emptyLine()]);
