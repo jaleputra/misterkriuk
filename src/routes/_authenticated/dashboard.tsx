@@ -276,8 +276,26 @@ function Dashboard() {
     return shipping + materials;
   }, [stockEntries, stockMovements]);
 
-  // Pendapatan Bersih
-  const netIncome = useMemo(() => totalRevenue - totalExpenditure, [totalRevenue, totalExpenditure]);
+  // Pengeluaran per metode pembayaran
+  const cashExpenditure = useMemo(() => {
+    const ids = new Set(stockEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").map((e) => e.id));
+    const ship = stockEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const mat = stockMovements.filter((m) => m.stock_entry_id && ids.has(m.stock_entry_id))
+      .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
+    return ship + mat;
+  }, [stockEntries, stockMovements]);
+  const qrisExpenditure = useMemo(() => {
+    const ids = new Set(stockEntries.filter((e: any) => e.payment_method === "qris").map((e) => e.id));
+    const ship = stockEntries.filter((e: any) => e.payment_method === "qris").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const mat = stockMovements.filter((m) => m.stock_entry_id && ids.has(m.stock_entry_id))
+      .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
+    return ship + mat;
+  }, [stockEntries, stockMovements]);
+
+  // Pendapatan Bersih (Cash + QRIS net)
+  const netCash = useMemo(() => cashRevenue - cashExpenditure, [cashRevenue, cashExpenditure]);
+  const netQris = useMemo(() => qrisRevenue - qrisExpenditure, [qrisRevenue, qrisExpenditure]);
+  const netIncome = useMemo(() => netCash + netQris, [netCash, netQris]);
 
   // Jumlah Produk Terjual
   const totalProductsSold = useMemo(() => {
