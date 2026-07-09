@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      daily_reports: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          initial_cash: number
+          note: string | null
+          report_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          initial_cash?: number
+          note?: string | null
+          report_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          initial_cash?: number
+          note?: string | null
+          report_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       event_items: {
         Row: {
           adjustment_type: string
@@ -181,6 +208,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          payment_method: string
           restock_date: string
           shipping_cost: number
           updated_at: string
@@ -189,6 +217,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          payment_method?: string
           restock_date?: string
           shipping_cost?: number
           updated_at?: string
@@ -197,6 +226,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          payment_method?: string
           restock_date?: string
           shipping_cost?: number
           updated_at?: string
