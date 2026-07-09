@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, UtensilsCrossed, ShoppingCart, Warehouse, Settings } from "lucide-react";
+import { LayoutDashboard, UtensilsCrossed, ShoppingCart, Warehouse, Settings, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AppRole } from "@/hooks/useAuth";
 
@@ -15,6 +15,7 @@ const items: NavItem[] = [
   { to: "/menu", label: "Menu", icon: UtensilsCrossed, roles: ["admin"] },
   { to: "/transaction", label: "Kasir", icon: ShoppingCart, roles: ["admin", "cashier"] },
   { to: "/warehouse", label: "Pengeluaran", icon: Warehouse, roles: ["admin", "cashier"] },
+  { to: "/reports", label: "Laporan", icon: FileText, roles: ["admin"] },
   { to: "/settings", label: "Setelan", icon: Settings, roles: ["admin", "cashier"] },
 ];
 

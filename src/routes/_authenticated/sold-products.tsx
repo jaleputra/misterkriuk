@@ -38,7 +38,7 @@ function SoldProductsDetail() {
 
   const handleDateFilterChange = (val: "today" | "7" | "14" | "30" | "month" | "all") => {
     navigate({
-      search: (prev) => ({
+      search: (prev: any) => ({
         ...prev,
         dateFilter: val,
       }),

@@ -45,6 +45,7 @@ function WarehousePage() {
   const emptyLine = (): DraftLine => ({ product_name: "", quantity: "", initial_price: "" });
   const [restockDate, setRestockDate] = useState(new Date().toISOString().slice(0, 10));
   const [shippingCost, setShippingCost] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris">("cash");
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
@@ -72,6 +73,7 @@ function WarehousePage() {
   const reset = () => {
     setRestockDate(new Date().toISOString().slice(0, 10));
     setShippingCost("");
+    setPaymentMethod("cash");
     setLines([emptyLine()]);
     setEditingEntry(null);
   };
@@ -129,7 +131,7 @@ function WarehousePage() {
       if (editingEntry) {
         const { error: entryError } = await supabase
           .from("stock_entries")
-          .update({ restock_date: restockDate, shipping_cost: Number(shippingCost || 0) })
+          .update({ restock_date: restockDate, shipping_cost: Number(shippingCost || 0), payment_method: paymentMethod })
           .eq("id", editingEntry);
         if (entryError) throw entryError;
         const { error: deleteError } = await supabase
@@ -152,6 +154,7 @@ function WarehousePage() {
         .insert({
           restock_date: restockDate,
           shipping_cost: Number(shippingCost || 0),
+          payment_method: paymentMethod,
           created_by: u.user?.id,
         })
         .select("id")
@@ -193,6 +196,7 @@ function WarehousePage() {
     setEditingEntry(entry.id);
     setRestockDate(entry.restock_date);
     setShippingCost(String(entry.shipping_cost));
+    setPaymentMethod((entry.payment_method as "cash" | "qris") ?? "cash");
     setLines(
       entry.stock_movements.map((movement: any) => ({
         product_name: (movement.products?.name ?? "").replace(/^\[GUDANG\]\s*/, ""),
@@ -247,6 +251,25 @@ function WarehousePage() {
                   value={shippingCost}
                   onChange={(event) => setShippingCost(event.target.value)}
                 />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Metode Pembayaran</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={paymentMethod === "cash" ? "default" : "outline"}
+                  onClick={() => setPaymentMethod("cash")}
+                >
+                  Cash
+                </Button>
+                <Button
+                  type="button"
+                  variant={paymentMethod === "qris" ? "default" : "outline"}
+                  onClick={() => setPaymentMethod("qris")}
+                >
+                  QRIS
+                </Button>
               </div>
             </div>
             <div className="space-y-2">
