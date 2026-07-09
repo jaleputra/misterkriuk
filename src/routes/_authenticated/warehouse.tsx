@@ -154,6 +154,7 @@ function WarehousePage() {
         .insert({
           restock_date: restockDate,
           shipping_cost: Number(shippingCost || 0),
+          payment_method: paymentMethod,
           created_by: u.user?.id,
         })
         .select("id")
