@@ -90,24 +90,63 @@ function Dashboard() {
       const sinceDateStr = fmt(since);
       const untilDateStr = until ? fmt(until) : null;
 
-      let txQ = supabase.from("transactions").select("*").gte("created_at", since.toISOString());
+      let txQ = supabase
+        .from("transactions")
+        .select("*")
+        .gte("created_at", since.toISOString())
+        .order("created_at", { ascending: false })
+        .range(0, 9999);
       if (until) txQ = txQ.lte("created_at", until.toISOString());
+
       let seQ = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr);
       if (untilDateStr) seQ = seQ.lte("restock_date", untilDateStr);
 
-      const [tx, items, prods, stockEntries, stockMovements] = await Promise.all([
+      const [txRes, productsRes, stockEntriesRes, stockMovementsRes] = await Promise.all([
         txQ,
-        supabase.from("transaction_items").select("*"),
         supabase.from("products").select("*"),
         seQ,
         supabase.from("stock_movements").select("*, products(name)"),
       ]);
+
+      if (txRes.error) console.error("dashboard tx query error:", txRes.error);
+
+      const txs = txRes.data ?? [];
+      const txIds = txs.map((t) => t.id);
+
+      let itemsData: any[] = [];
+      if (txIds.length > 0) {
+        // Chunk transaction IDs to avoid HTTP 414 Request-URI Too Long errors
+        const chunkSize = 100;
+        const chunks = [];
+        for (let i = 0; i < txIds.length; i += chunkSize) {
+          chunks.push(txIds.slice(i, i + chunkSize));
+        }
+
+        const results = await Promise.all(
+          chunks.map((chunk) =>
+            supabase
+              .from("transaction_items")
+              .select("*")
+              .in("transaction_id", chunk)
+              .range(0, 19999)
+          )
+        );
+
+        for (const res of results) {
+          if (res.error) {
+            console.error("dashboard items query error in chunk:", res.error);
+          } else {
+            itemsData.push(...(res.data ?? []));
+          }
+        }
+      }
+
       return {
-        transactions: tx.data ?? [],
-        items: items.data ?? [],
-        products: prods.data ?? [],
-        stockEntries: stockEntries.data ?? [],
-        stockMovements: stockMovements.data ?? [],
+        transactions: txs,
+        items: itemsData,
+        products: productsRes.data ?? [],
+        stockEntries: stockEntriesRes.data ?? [],
+        stockMovements: stockMovementsRes.data ?? [],
       };
     },
     refetchInterval: 30000,
@@ -360,18 +399,52 @@ function Dashboard() {
   const netQris = useMemo(() => qrisRevenue - qrisExpenditure, [qrisRevenue, qrisExpenditure]);
   const netIncome = useMemo(() => netCash + netQris, [netCash, netQris]);
 
-  // Jumlah Produk Terjual
+  // Create product category lookup map
+  const productCategoryMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    products.forEach((p) => {
+      let cat = p.category || "customer";
+      if (cat.startsWith("deleted_")) {
+        cat = cat.replace("deleted_", "");
+      }
+      map[p.id] = cat;
+    });
+    return map;
+  }, [products]);
+
+  // Helper function to check if item is from partner transaction or is a partner product
+  const isPartnerItem = (item: any, tx: any) => {
+    if (tx?.sale_category === "partner") return true;
+    
+    let cat = "customer";
+    if (item.product_id && productCategoryMap[item.product_id]) {
+      cat = productCategoryMap[item.product_id];
+    } else if (item.product_name?.startsWith("[GUDANG]")) {
+      cat = "gudang";
+    }
+    return cat === "partner";
+  };
+
+  // Jumlah Produk Terjual (kecuali partner)
   const totalProductsSold = useMemo(() => {
-    const txIds = new Set(txs.map((t) => t.id));
+    const txMap = new Map(txs.map((t) => [t.id, t]));
     return items
-      .filter((item) => txIds.has(item.transaction_id))
+      .filter((item) => {
+        const tx = txMap.get(item.transaction_id);
+        if (!tx) return false;
+        return !isPartnerItem(item, tx);
+      })
       .reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
-  }, [items, txs]);
+  }, [items, txs, productCategoryMap]);
 
   // Informasi Pack (4 dada, 2 paha atas, 2 paha bawah, 2 sayap = 1 pack)
   const packInfo = useMemo(() => {
-    const txIds = new Set(txs.map((t) => t.id));
-    const activeItems = items.filter((item) => txIds.has(item.transaction_id));
+    const txMap = new Map(txs.map((t) => [t.id, t]));
+    const activeItems = items.filter((item) => {
+      const tx = txMap.get(item.transaction_id);
+      if (!tx) return false;
+      return !isPartnerItem(item, tx);
+    });
 
     let dada = 0;
     let pahaAtas = 0;
@@ -392,15 +465,11 @@ function Dashboard() {
       }
     });
 
-    const pDada = Math.floor(dada / 4);
-    const pPahaAtas = Math.floor(pahaAtas / 2);
-    const pPahaBawah = Math.floor(pahaBawah / 2);
-    const pSayap = Math.floor(sayap / 2);
-
-    const packs = Math.min(pDada, pPahaAtas, pPahaBawah, pSayap);
+    const totalAyam = dada + pahaAtas + pahaBawah + sayap;
+    const packs = Math.ceil(totalAyam / 10);
 
     return { packs, dada, pahaAtas, pahaBawah, sayap };
-  }, [items, txs]);
+  }, [items, txs, productCategoryMap]);
 
   // Daily revenue line chart data
   const daily = useMemo(() => {
@@ -504,14 +573,14 @@ function Dashboard() {
           label="Pemasukan"
           value={role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}
           sub={role === "cashier" ? `${txs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
-          onClick={() => navigate({ to: "/income-details" })}
+          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
         <Stat
           icon={TrendingUp}
           label="Pengeluaran"
           value={role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}
           sub={`${stockEntries.length} Restok Gudang`}
-          onClick={() => navigate({ to: "/expense-details" })}
+          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
         <Stat
           icon={BarChart3}
@@ -529,7 +598,7 @@ function Dashboard() {
           label="Jumlah Produk Terjual"
           value={`${totalProductsSold} Pcs (${packInfo.packs} Pack)`}
           sub={`Detail: D:${packInfo.dada} · PA:${packInfo.pahaAtas} · PB:${packInfo.pahaBawah} · S:${packInfo.sayap}`}
-          onClick={() => navigate({ to: "/sold-products", search: { dateFilter } })}
+          onClick={() => navigate({ to: "/sold-products", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
       </div>
 

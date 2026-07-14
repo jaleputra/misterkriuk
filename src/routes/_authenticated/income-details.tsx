@@ -17,15 +17,25 @@ import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pd
 import { Receipt } from "@/components/Receipt";
 
 export const Route = createFileRoute("/_authenticated/income-details")({
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      dateFilter: (search.dateFilter as "today" | "7" | "14" | "30" | "month" | "all") || undefined,
+      fromDate: (search.fromDate as string) || undefined,
+      toDate: (search.toDate as string) || undefined,
+    };
+  },
   ssr: false,
   component: IncomeDetails,
 });
 
 function IncomeDetails() {
   const { role } = useAuth();
-  const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
+  const searchParams = Route.useSearch();
+  const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">(
+    searchParams.dateFilter || "14"
+  );
+  const [fromDate, setFromDate] = useState<string>(searchParams.fromDate || "");
+  const [toDate, setToDate] = useState<string>(searchParams.toDate || "");
   const [search, setSearch] = useState("");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "cash" | "qris">("all");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
@@ -53,20 +63,56 @@ function IncomeDetails() {
         sinceIso = since.toISOString();
       }
 
-      let q = supabase.from("transactions").select("*").gte("created_at", sinceIso);
+      let q = supabase
+        .from("transactions")
+        .select("*")
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false })
+        .range(0, 9999);
       if (untilIso) q = q.lte("created_at", untilIso);
-      const tx = await q.order("created_at", { ascending: false }).range(0, 9999);
-      const txIds = (tx.data ?? []).map((t) => t.id);
-      const [items, prods] = await Promise.all([
-        txIds.length
-          ? supabase.from("transaction_items").select("*").in("transaction_id", txIds).range(0, 19999)
-          : Promise.resolve({ data: [] as any[] }),
+
+      const [txRes, productsRes] = await Promise.all([
+        q,
         supabase.from("products").select("*").range(0, 9999),
       ]);
+
+      if (txRes.error) console.error("income-details tx query error:", txRes.error);
+
+      const txs = txRes.data ?? [];
+      const txIds = txs.map((t) => t.id);
+
+      let itemsData: any[] = [];
+      if (txIds.length > 0) {
+        // Chunk transaction IDs to avoid HTTP 414 Request-URI Too Long errors
+        const chunkSize = 100;
+        const chunks = [];
+        for (let i = 0; i < txIds.length; i += chunkSize) {
+          chunks.push(txIds.slice(i, i + chunkSize));
+        }
+
+        const results = await Promise.all(
+          chunks.map((chunk) =>
+            supabase
+              .from("transaction_items")
+              .select("*")
+              .in("transaction_id", chunk)
+              .range(0, 19999)
+          )
+        );
+
+        for (const res of results) {
+          if (res.error) {
+            console.error("income-details items query error in chunk:", res.error);
+          } else {
+            itemsData.push(...(res.data ?? []));
+          }
+        }
+      }
+
       return {
-        transactions: tx.data ?? [],
-        items: items.data ?? [],
-        products: prods.data ?? [],
+        transactions: txs,
+        items: itemsData,
+        products: productsRes.data ?? [],
       };
     },
     refetchInterval: 30000,

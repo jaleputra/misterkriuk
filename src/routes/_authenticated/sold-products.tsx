@@ -14,6 +14,8 @@ export const Route = createFileRoute("/_authenticated/sold-products")({
   validateSearch: (search: Record<string, unknown>) => {
     return {
       dateFilter: (search.dateFilter as "today" | "7" | "14" | "30" | "month" | "all") || "14",
+      fromDate: (search.fromDate as string) || undefined,
+      toDate: (search.toDate as string) || undefined,
     };
   },
   ssr: false,
@@ -34,6 +36,9 @@ function SoldProductsDetail() {
   const navigate = useNavigate({ from: Route.fullPath });
   const searchParams = Route.useSearch();
   const dateFilter = searchParams.dateFilter || "14";
+  const [fromDate, setFromDate] = useState(searchParams.fromDate || "");
+  const [toDate, setToDate] = useState(searchParams.toDate || "");
+  const customRange = !!(fromDate && toDate);
   const [search, setSearch] = useState("");
 
   const handleDateFilterChange = (val: "today" | "7" | "14" | "30" | "month" | "all") => {
@@ -45,27 +50,108 @@ function SoldProductsDetail() {
     });
   };
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["sold-products-detail", dateFilter],
-    queryFn: async () => {
-      const since = new Date();
-      if (dateFilter === "today") since.setHours(0, 0, 0, 0);
-      else if (dateFilter === "7") since.setDate(since.getDate() - 6);
-      else if (dateFilter === "14") since.setDate(since.getDate() - 13);
-      else if (dateFilter === "30") since.setDate(since.getDate() - 29);
-      else if (dateFilter === "month") since.setDate(1);
-      else since.setFullYear(2020, 0, 1);
-      since.setHours(0, 0, 0, 0);
+  const handleFromDateChange = (val: string) => {
+    setFromDate(val);
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        fromDate: val || undefined,
+      }),
+    });
+  };
 
-      const [tx, items, prods] = await Promise.all([
-        supabase.from("transactions").select("*").gte("created_at", since.toISOString()),
-        supabase.from("transaction_items").select("*"),
+  const handleToDateChange = (val: string) => {
+    setToDate(val);
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        toDate: val || undefined,
+      }),
+    });
+  };
+
+  const handleResetCustomRange = () => {
+    setFromDate("");
+    setToDate("");
+    navigate({
+      search: (prev: any) => {
+        const next = { ...prev };
+        delete next.fromDate;
+        delete next.toDate;
+        return next;
+      },
+    });
+  };
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["sold-products-detail", dateFilter, fromDate, toDate],
+    queryFn: async () => {
+      let since: Date;
+      let until: Date | null = null;
+      if (customRange) {
+        since = new Date(`${fromDate}T00:00:00`);
+        until = new Date(`${toDate}T23:59:59.999`);
+      } else {
+        since = new Date();
+        if (dateFilter === "today") since.setHours(0, 0, 0, 0);
+        else if (dateFilter === "7") since.setDate(since.getDate() - 6);
+        else if (dateFilter === "14") since.setDate(since.getDate() - 13);
+        else if (dateFilter === "30") since.setDate(since.getDate() - 29);
+        else if (dateFilter === "month") since.setDate(1);
+        else since.setFullYear(2020, 0, 1);
+        since.setHours(0, 0, 0, 0);
+      }
+
+      let txQ = supabase
+        .from("transactions")
+        .select("*")
+        .gte("created_at", since.toISOString())
+        .order("created_at", { ascending: false })
+        .range(0, 9999);
+      if (until) txQ = txQ.lte("created_at", until.toISOString());
+
+      const [txRes, productsRes] = await Promise.all([
+        txQ,
         supabase.from("products").select("*"),
       ]);
+
+      if (txRes.error) console.error("sold-products tx query error:", txRes.error);
+
+      const txs = txRes.data ?? [];
+      const txIds = txs.map((t) => t.id);
+
+      let itemsData: any[] = [];
+      if (txIds.length > 0) {
+        // Chunk transaction IDs to avoid HTTP 414 Request-URI Too Long errors
+        const chunkSize = 100;
+        const chunks = [];
+        for (let i = 0; i < txIds.length; i += chunkSize) {
+          chunks.push(txIds.slice(i, i + chunkSize));
+        }
+
+        const results = await Promise.all(
+          chunks.map((chunk) =>
+            supabase
+              .from("transaction_items")
+              .select("*")
+              .in("transaction_id", chunk)
+              .range(0, 19999)
+          )
+        );
+
+        for (const res of results) {
+          if (res.error) {
+            console.error("sold-products items query error in chunk:", res.error);
+          } else {
+            itemsData.push(...(res.data ?? []));
+          }
+        }
+      }
+
       return {
-        transactions: tx.data ?? [],
-        items: items.data ?? [],
-        products: prods.data ?? [],
+        transactions: txs,
+        items: itemsData,
+        products: productsRes.data ?? [],
       };
     },
     refetchInterval: 30000,
@@ -74,6 +160,13 @@ function SoldProductsDetail() {
   const transactions = data?.transactions ?? [];
   const items = data?.items ?? [];
   const products = data?.products ?? [];
+
+  console.log("DEBUG sold-products:", {
+    dateFilter,
+    transactionsCount: transactions.length,
+    itemsCount: items.length,
+    productsCount: products.length,
+  });
 
   // Create product category lookup map
   const productCategoryMap = useMemo(() => {
@@ -90,7 +183,7 @@ function SoldProductsDetail() {
 
   // Aggregate product sales
   const productSalesMap = useMemo(() => {
-    const txIds = new Set(transactions.map((t) => t.id));
+    const txMap = new Map(transactions.map((t) => [t.id, t]));
     const map: Record<string, {
       product_id: string | null;
       product_name: string;
@@ -100,9 +193,11 @@ function SoldProductsDetail() {
     }> = {};
 
     items.forEach((item) => {
-      if (txIds.has(item.transaction_id)) {
-        const key = item.product_id || item.product_name;
-        
+      const tx = txMap.get(item.transaction_id);
+      if (tx) {
+        // Exclude partner transactions
+        if (tx.sale_category === "partner") return;
+
         let cat = "customer";
         if (item.product_id && productCategoryMap[item.product_id]) {
           cat = productCategoryMap[item.product_id];
@@ -110,6 +205,11 @@ function SoldProductsDetail() {
           cat = "gudang";
         }
 
+        // Exclude partner products
+        if (cat === "partner") return;
+
+        const key = item.product_id || item.product_name;
+        
         if (!map[key]) {
           map[key] = {
             product_id: item.product_id,
@@ -148,12 +248,8 @@ function SoldProductsDetail() {
       }
     });
 
-    const pDada = Math.floor(dada / 4);
-    const pPahaAtas = Math.floor(pahaAtas / 2);
-    const pPahaBawah = Math.floor(pahaBawah / 2);
-    const pSayap = Math.floor(sayap / 2);
-
-    const packs = Math.min(pDada, pPahaAtas, pPahaBawah, pSayap);
+    const totalAyam = dada + pahaAtas + pahaBawah + sayap;
+    const packs = Math.ceil(totalAyam / 10);
 
     return { packs, dada, pahaAtas, pahaBawah, sayap };
   }, [productSalesMap]);
@@ -227,6 +323,20 @@ function SoldProductsDetail() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Custom date range filter */}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground">Rentang Kustom:</span>
+        <Input type="date" value={fromDate} onChange={(e) => handleFromDateChange(e.target.value)} className="h-8 w-[150px]" />
+        <span className="text-muted-foreground">s/d</span>
+        <Input type="date" value={toDate} onChange={(e) => handleToDateChange(e.target.value)} className="h-8 w-[150px]" />
+        {(fromDate || toDate) && (
+          <Button size="sm" variant="ghost" className="h-8" onClick={handleResetCustomRange}>Reset</Button>
+        )}
+        {customRange && (
+          <span className="text-[10px] text-primary">(Rentang kustom aktif — filter waktu di atas diabaikan)</span>
+        )}
       </div>
 
       <div className="relative">

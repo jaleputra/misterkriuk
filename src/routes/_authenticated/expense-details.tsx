@@ -14,6 +14,13 @@ import { toast } from "sonner";
 import { ArrowLeft, Trash2, Save, Plus, Minus, X, Search } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/expense-details")({
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      dateFilter: (search.dateFilter as "today" | "7" | "14" | "30" | "month" | "all") || undefined,
+      fromDate: (search.fromDate as string) || undefined,
+      toDate: (search.toDate as string) || undefined,
+    };
+  },
   ssr: false,
   component: ExpenseDetails,
 });
@@ -21,9 +28,12 @@ export const Route = createFileRoute("/_authenticated/expense-details")({
 function ExpenseDetails() {
   const navigate = useNavigate();
   const { role } = useAuth();
-  const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
+  const searchParams = Route.useSearch();
+  const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">(
+    searchParams.dateFilter || "14"
+  );
+  const [fromDate, setFromDate] = useState<string>(searchParams.fromDate || "");
+  const [toDate, setToDate] = useState<string>(searchParams.toDate || "");
   const customRange = !!(fromDate && toDate);
   const [search, setSearch] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -56,16 +66,40 @@ function ExpenseDetails() {
       const entries = entriesData ?? [];
       const entryIds = entries.map((e) => e.id);
 
-      const [movementsRes, prodsRes] = await Promise.all([
-        entryIds.length > 0
-          ? supabase.from("stock_movements").select("*, products(name)").in("stock_entry_id", entryIds)
-          : Promise.resolve({ data: [] }),
+      let movementsData: any[] = [];
+      if (entryIds.length > 0) {
+        // Chunk entry IDs to avoid HTTP 414 Request-URI Too Long errors
+        const chunkSize = 100;
+        const chunks = [];
+        for (let i = 0; i < entryIds.length; i += chunkSize) {
+          chunks.push(entryIds.slice(i, i + chunkSize));
+        }
+
+        const results = await Promise.all(
+          chunks.map((chunk) =>
+            supabase
+              .from("stock_movements")
+              .select("*, products(name)")
+              .in("stock_entry_id", chunk)
+          )
+        );
+
+        for (const res of results) {
+          if (res.error) {
+            console.error("expense-details movements query error in chunk:", res.error);
+          } else {
+            movementsData.push(...(res.data ?? []));
+          }
+        }
+      }
+
+      const [prodsRes] = await Promise.all([
         supabase.from("products").select("*"),
       ]);
 
       return {
         entries,
-        movements: movementsRes.data ?? [],
+        movements: movementsData,
         products: prodsRes.data ?? [],
       };
     },
