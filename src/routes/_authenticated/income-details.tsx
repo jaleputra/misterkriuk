@@ -160,11 +160,14 @@ function IncomeDetails() {
       if (isCash && cashVal < totalAmt) throw new Error("Uang tunai kurang");
       const changeAmt = isCash ? Math.max(0, cashVal - totalAmt) : null;
 
-      // Restore stock from original items
-      const originalItems = items.filter((i) => i.transaction_id === selectedTxId);
-      for (const oi of originalItems) {
+      // Restore stock from original items (fetch fresh to avoid stale cache)
+      const { data: originalItems } = await supabase
+        .from("transaction_items")
+        .select("*")
+        .eq("transaction_id", selectedTxId);
+      for (const oi of originalItems ?? []) {
         if (oi.product_id) {
-          const { data: prod } = await supabase.from("products").select("stock").eq("id", oi.product_id).single();
+          const { data: prod } = await supabase.from("products").select("stock").eq("id", oi.product_id).maybeSingle();
           if (prod) {
             await supabase.from("products").update({ stock: prod.stock + oi.quantity }).eq("id", oi.product_id);
           }
