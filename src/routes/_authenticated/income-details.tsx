@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
-import { shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
+import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
 
 export const Route = createFileRoute("/_authenticated/income-details")({
@@ -261,14 +261,32 @@ function IncomeDetails() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const getReceiptTx = (tx: any) => {
+    return {
+      ...tx,
+      items: editItems,
+      total: currentTotal,
+      payment_method: editForm.payment_method,
+      cash_received: editForm.payment_method === "cash" ? Number(editForm.cash_received) || 0 : null,
+      change_amount: editForm.payment_method === "cash" ? Math.max(0, (Number(editForm.cash_received) || 0) - currentTotal) : null,
+      buyer_name: editForm.buyer_name || null,
+      house_block: editForm.house_block || null,
+      partner_name: editForm.partner_name || null,
+    };
+  };
+
   const handlePrint = async (tx: any) => {
-    const txItems = items.filter((i) => i.transaction_id === tx.id);
+    const printTx = getReceiptTx(tx);
     if (!isPrinterConnectedClient()) {
-      toast.warning("Printer Bluetooth belum terhubung.");
+      try {
+        printReceiptPdfClient(printTx, settings ?? null);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Gagal mencetak PDF");
+      }
       return;
     }
     try {
-      await printReceiptThermalClient({ ...tx, items: txItems }, settings ?? null);
+      await printReceiptThermalClient(printTx, settings ?? null);
       toast.success("Struk dikirim ke printer");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal mencetak");
@@ -276,9 +294,9 @@ function IncomeDetails() {
   };
 
   const handleShare = async (tx: any) => {
-    const txItems = items.filter((i) => i.transaction_id === tx.id);
+    const shareTx = getReceiptTx(tx);
     try {
-      await shareReceiptImageClient({ ...tx, items: txItems }, settings ?? null);
+      await shareReceiptImageClient(shareTx, settings ?? null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membagikan");
     }

@@ -38,7 +38,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
-import { shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
+import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -141,6 +141,7 @@ function Dashboard() {
   });
 
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [selectedTxItems, setSelectedTxItems] = useState<any[]>([]);
   const [editForm, setEditForm] = useState({
     payment_method: "cash",
     house_block: "",
@@ -148,7 +149,7 @@ function Dashboard() {
     partner_name: "",
   });
 
-  const handleSelectTx = (t: any) => {
+  const handleSelectTx = async (t: any) => {
     setEditingTxId(t.id);
     setEditForm({
       payment_method: t.payment_method,
@@ -156,6 +157,15 @@ function Dashboard() {
       cash_received: String(t.cash_received ?? ""),
       partner_name: t.partner_name ?? "",
     });
+    let txItems = items.filter((i) => i.transaction_id === t.id).map((i) => ({ ...i }));
+    if (txItems.length === 0) {
+      const { data: fresh } = await supabase
+        .from("transaction_items")
+        .select("*")
+        .eq("transaction_id", t.id);
+      txItems = (fresh ?? []).map((i) => ({ ...i }));
+    }
+    setSelectedTxItems(txItems);
   };
 
   const deleteTransaction = useMutation({
@@ -256,23 +266,59 @@ function Dashboard() {
     }
   });
 
-  const handlePrintThermal = async (tx: any) => {
-    const txItems = items.filter((item) => item.transaction_id === tx.id);
+  const getReceiptTx = (tx: any, txItems?: any[]) => {
+    let finalItems = txItems ?? selectedTxItems;
+    if (finalItems.length === 0) {
+      finalItems = items.filter((item) => item.transaction_id === tx.id);
+    }
+    return {
+      ...tx,
+      items: finalItems,
+      payment_method: editForm.payment_method,
+      cash_received: editForm.payment_method === "cash" ? Number(editForm.cash_received) || 0 : null,
+      change_amount: editForm.payment_method === "cash" ? Math.max(0, (Number(editForm.cash_received) || 0) - Number(tx.total)) : null,
+      house_block: editForm.house_block || null,
+      partner_name: editForm.partner_name || null,
+    };
+  };
+
+  const handlePrintReceipt = async (tx: any, txItems?: any[]) => {
+    const printTx = getReceiptTx(tx, txItems);
+    if (printTx.items.length === 0) {
+      const { data: fresh } = await supabase
+        .from("transaction_items")
+        .select("*")
+        .eq("transaction_id", tx.id);
+      printTx.items = fresh ?? [];
+    }
+
     if (!isPrinterConnectedClient()) {
-      toast.warning("Printer Bluetooth belum terhubung. Silakan sambungkan di halaman Pengaturan.");
+      try {
+        printReceiptPdfClient(printTx, settings ?? null);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Gagal mencetak PDF");
+      }
       return;
     }
     try {
-      await printReceiptThermalClient({ ...tx, items: txItems }, settings ?? null);
+      await printReceiptThermalClient(printTx, settings ?? null);
       toast.success("Struk berhasil dikirim ke printer");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal mencetak");
     }
   };
 
-  const handleShareReceipt = async (tx: any, txItems: any) => {
+  const handleShareReceipt = async (tx: any, txItems?: any[]) => {
+    const shareTx = getReceiptTx(tx, txItems);
+    if (shareTx.items.length === 0) {
+      const { data: fresh } = await supabase
+        .from("transaction_items")
+        .select("*")
+        .eq("transaction_id", tx.id);
+      shareTx.items = fresh ?? [];
+    }
     try {
-      await shareReceiptImageClient({ ...tx, items: txItems }, settings ?? null);
+      await shareReceiptImageClient(shareTx, settings ?? null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membagikan struk");
     }
@@ -635,7 +681,7 @@ function Dashboard() {
           {detailModal.type === "pemasukan" && editingTxId && (() => {
             const selectedTx = txs.find((t) => t.id === editingTxId);
             if (!selectedTx) return null;
-            const selectedItems = items.filter((i) => i.transaction_id === editingTxId);
+            const selectedItems = selectedTxItems;
             const totalAmt = Number(selectedTx.total);
             const isCash = editForm.payment_method === "cash";
             const cashVal = Number(editForm.cash_received) || 0;
@@ -731,9 +777,9 @@ function Dashboard() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handlePrintThermal(selectedTx)}
+                          onClick={() => handlePrintReceipt(selectedTx, selectedItems)}
                         >
-                          <Printer className="h-4 w-4 mr-1.5" /> Cetak Thermal
+                          <Printer className="h-4 w-4 mr-1.5" /> Cetak
                         </Button>
                         <Button
                           variant="outline"
