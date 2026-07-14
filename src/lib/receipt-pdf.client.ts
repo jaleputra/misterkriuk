@@ -14,7 +14,7 @@ function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) 
   const addressLines = settings?.shop_address
     ? Math.max(1, Math.ceil(settings.shop_address.length / 40))
     : 0;
-  const partnerLines = tx.sale_category === "partner" && tx.partner_name ? 1 : 0;
+  const partnerLines = tx.partner_name ? 1 : 0;
   const discountLines = Number(tx.discount_amount) > 0 ? 1 : 0;
   return Math.max(100, 77 + addressLines * 4 + partnerLines * 4 + discountLines * 4 + tx.items.length * 10);
 }
@@ -60,7 +60,7 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
   divider();
   row("No.", tx.id.slice(0, 8).toUpperCase());
   row("Tanggal", new Date(tx.created_at).toLocaleString("id-ID"));
-  if (tx.sale_category === "partner" && tx.partner_name) row("Partner", tx.partner_name);
+  if (tx.partner_name) row("Partner", tx.partner_name);
   divider();
 
   tx.items.forEach((item) => {
@@ -84,7 +84,7 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
     row("Kembalian", rupiah(tx.change_amount ?? 0));
   }
   divider();
-  centerText(`Terima kasih ${tx.buyer_name ?? "Pelanggan"}`.trim());
+  centerText(`Terima kasih ${tx.partner_name || tx.buyer_name || "Pelanggan"}`.trim());
   if (tx.house_block) {
     y += 2;
     centerText(`BLOK: ${tx.house_block.toUpperCase()}`, 11, true);

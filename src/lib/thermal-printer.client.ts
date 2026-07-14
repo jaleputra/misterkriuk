@@ -217,7 +217,7 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(enc.encode(lineBetween("No.", tx.id.slice(0, 8).toUpperCase(), width) + "\n"));
   parts.push(enc.encode(lineBetween("Tanggal", new Date(tx.created_at).toLocaleString("id-ID"), width) + "\n"));
-  if (tx.sale_category === "partner" && tx.partner_name)
+  if (tx.partner_name)
     parts.push(enc.encode(lineBetween("Partner", tx.partner_name, width) + "\n"));
   parts.push(enc.encode("-".repeat(width) + "\n"));
 
@@ -243,7 +243,7 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   }
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(cmd.alignCenter);
-  const thanks = `Terima kasih ${tx.buyer_name ?? "Pelanggan"}`;
+  const thanks = `Terima kasih ${tx.partner_name || tx.buyer_name || "Pelanggan"}`;
   for (const l of wrap(thanks, width)) parts.push(enc.encode(l + "\n"));
   if (tx.house_block) {
     parts.push(enc.encode("\n"));

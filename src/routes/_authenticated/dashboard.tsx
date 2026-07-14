@@ -661,7 +661,10 @@ function Dashboard() {
                     className="flex justify-between items-center border-b pb-2 text-sm cursor-pointer hover:bg-muted/50 p-2 rounded transition active:scale-[0.98]"
                   >
                     <div>
-                      <div className="font-semibold">No: {t.id.slice(0, 8).toUpperCase()}</div>
+                      <div className="font-semibold">
+                        No: {t.id.slice(0, 8).toUpperCase()}
+                        {t.partner_name ? ` · Partner: ${t.partner_name}` : t.buyer_name ? ` · ${t.buyer_name}` : ""}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {new Date(t.created_at).toLocaleString("id-ID")}
                       </div>

@@ -39,7 +39,7 @@ export function Receipt({ tx, settings }: ReceiptProps) {
         <span>Tanggal</span>
         <span>{new Date(tx.created_at).toLocaleString("id-ID")}</span>
       </div>
-      {tx.sale_category === "partner" && tx.partner_name && (
+      {tx.partner_name && (
         <div className="row flex justify-between">
           <span>Partner</span>
           <span>{tx.partner_name}</span>
@@ -86,7 +86,7 @@ export function Receipt({ tx, settings }: ReceiptProps) {
       )}
       <hr className="border-t border-dashed border-black my-2" />
       <div className="center text-center">
-        Terima kasih {tx.buyer_name ?? "Pelanggan"} 🙏
+        Terima kasih {tx.partner_name || tx.buyer_name || "Pelanggan"} 🙏
       </div>
       {tx.house_block && (
         <div className="center text-center font-bold text-lg mt-3 border border-black p-1.5 rounded bg-black/5">

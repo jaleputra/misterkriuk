@@ -394,7 +394,7 @@ function IncomeDetails() {
                   <div className="min-w-0">
                     <div className="font-semibold truncate">
                       No: {t.id.slice(0, 8).toUpperCase()}
-                      {t.buyer_name ? ` · ${t.buyer_name}` : ""}
+                      {t.partner_name ? ` · Partner: ${t.partner_name}` : t.buyer_name ? ` · ${t.buyer_name}` : ""}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(t.created_at).toLocaleString("id-ID")}
