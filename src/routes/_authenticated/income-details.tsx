@@ -113,7 +113,7 @@ function IncomeDetails() {
 
   const selectedTx = useMemo(() => txs.find((t) => t.id === selectedTxId) ?? null, [txs, selectedTxId]);
 
-  const openTx = (t: any) => {
+  const openTx = async (t: any) => {
     setSelectedTxId(t.id);
     setEditForm({
       payment_method: t.payment_method,
@@ -122,7 +122,14 @@ function IncomeDetails() {
       partner_name: t.partner_name ?? "",
       buyer_name: t.buyer_name ?? "",
     });
-    const txItems = items.filter((i) => i.transaction_id === t.id).map((i) => ({ ...i }));
+    let txItems = items.filter((i) => i.transaction_id === t.id).map((i) => ({ ...i }));
+    if (txItems.length === 0) {
+      const { data: fresh } = await supabase
+        .from("transaction_items")
+        .select("*")
+        .eq("transaction_id", t.id);
+      txItems = (fresh ?? []).map((i) => ({ ...i }));
+    }
     setEditItems(txItems);
   };
 
