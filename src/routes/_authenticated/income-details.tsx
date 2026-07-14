@@ -41,10 +41,18 @@ function IncomeDetails() {
       else since.setFullYear(2020, 0, 1);
       since.setHours(0, 0, 0, 0);
 
-      const [tx, items, prods] = await Promise.all([
-        supabase.from("transactions").select("*").gte("created_at", since.toISOString()).order("created_at", { ascending: false }),
-        supabase.from("transaction_items").select("*"),
-        supabase.from("products").select("*"),
+      const tx = await supabase
+        .from("transactions")
+        .select("*")
+        .gte("created_at", since.toISOString())
+        .order("created_at", { ascending: false })
+        .range(0, 9999);
+      const txIds = (tx.data ?? []).map((t) => t.id);
+      const [items, prods] = await Promise.all([
+        txIds.length
+          ? supabase.from("transaction_items").select("*").in("transaction_id", txIds).range(0, 19999)
+          : Promise.resolve({ data: [] as any[] }),
+        supabase.from("products").select("*").range(0, 9999),
       ]);
       return {
         transactions: tx.data ?? [],
