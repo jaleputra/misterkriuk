@@ -240,6 +240,20 @@ function ExpenseDetails() {
         </div>
       </div>
 
+      {/* Custom date range filter (new) */}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground">Rentang Kustom:</span>
+        <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 w-[150px]" />
+        <span className="text-muted-foreground">s/d</span>
+        <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 w-[150px]" />
+        {(fromDate || toDate) && (
+          <Button size="sm" variant="ghost" className="h-8" onClick={() => { setFromDate(""); setToDate(""); }}>Reset</Button>
+        )}
+        {customRange && (
+          <span className="text-[10px] text-primary">(Rentang kustom aktif — filter tanggal di atas diabaikan)</span>
+        )}
+      </div>
+
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
