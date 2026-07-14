@@ -22,29 +22,36 @@ function ExpenseDetails() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+  const customRange = !!(fromDate && toDate);
   const [search, setSearch] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data } = useQuery({
-    queryKey: ["expense-details", dateFilter],
+    queryKey: ["expense-details", dateFilter, fromDate, toDate],
     queryFn: async () => {
-      const since = new Date();
-      if (dateFilter === "today") since.setHours(0, 0, 0, 0);
-      else if (dateFilter === "7") since.setDate(since.getDate() - 6);
-      else if (dateFilter === "14") since.setDate(since.getDate() - 13);
-      else if (dateFilter === "30") since.setDate(since.getDate() - 29);
-      else if (dateFilter === "month") since.setDate(1);
-      else since.setFullYear(2020, 0, 1);
-      since.setHours(0, 0, 0, 0);
+      let sinceDateStr: string;
+      let untilDateStr: string | null = null;
+      if (customRange) {
+        sinceDateStr = fromDate;
+        untilDateStr = toDate;
+      } else {
+        const since = new Date();
+        if (dateFilter === "today") since.setHours(0, 0, 0, 0);
+        else if (dateFilter === "7") since.setDate(since.getDate() - 6);
+        else if (dateFilter === "14") since.setDate(since.getDate() - 13);
+        else if (dateFilter === "30") since.setDate(since.getDate() - 29);
+        else if (dateFilter === "month") since.setDate(1);
+        else since.setFullYear(2020, 0, 1);
+        since.setHours(0, 0, 0, 0);
+        sinceDateStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
+      }
 
-      const sinceDateStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
-
-      const { data: entriesData } = await supabase
-        .from("stock_entries")
-        .select("*")
-        .gte("restock_date", sinceDateStr)
-        .order("restock_date", { ascending: false });
+      let q = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr);
+      if (untilDateStr) q = q.lte("restock_date", untilDateStr);
+      const { data: entriesData } = await q.order("restock_date", { ascending: false });
 
       const entries = entriesData ?? [];
       const entryIds = entries.map((e) => e.id);
@@ -231,6 +238,20 @@ function ExpenseDetails() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Custom date range filter (new) */}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground">Rentang Kustom:</span>
+        <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 w-[150px]" />
+        <span className="text-muted-foreground">s/d</span>
+        <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 w-[150px]" />
+        {(fromDate || toDate) && (
+          <Button size="sm" variant="ghost" className="h-8" onClick={() => { setFromDate(""); setToDate(""); }}>Reset</Button>
+        )}
+        {customRange && (
+          <span className="text-[10px] text-primary">(Rentang kustom aktif — filter tanggal di atas diabaikan)</span>
+        )}
       </div>
 
       <div className="relative">

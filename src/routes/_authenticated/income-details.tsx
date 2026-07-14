@@ -24,29 +24,38 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 function IncomeDetails() {
   const { role } = useAuth();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
   const [search, setSearch] = useState("");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "cash" | "qris">("all");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const qc = useQueryClient();
 
-  const { data } = useQuery({
-    queryKey: ["income-details", dateFilter],
-    queryFn: async () => {
-      const since = new Date();
-      if (dateFilter === "today") since.setHours(0, 0, 0, 0);
-      else if (dateFilter === "7") since.setDate(since.getDate() - 6);
-      else if (dateFilter === "14") since.setDate(since.getDate() - 13);
-      else if (dateFilter === "30") since.setDate(since.getDate() - 29);
-      else if (dateFilter === "month") since.setDate(1);
-      else since.setFullYear(2020, 0, 1);
-      since.setHours(0, 0, 0, 0);
+  const customRange = !!(fromDate && toDate);
 
-      const tx = await supabase
-        .from("transactions")
-        .select("*")
-        .gte("created_at", since.toISOString())
-        .order("created_at", { ascending: false })
-        .range(0, 9999);
+  const { data } = useQuery({
+    queryKey: ["income-details", dateFilter, fromDate, toDate],
+    queryFn: async () => {
+      let sinceIso: string;
+      let untilIso: string | null = null;
+      if (customRange) {
+        sinceIso = new Date(`${fromDate}T00:00:00`).toISOString();
+        untilIso = new Date(`${toDate}T23:59:59.999`).toISOString();
+      } else {
+        const since = new Date();
+        if (dateFilter === "today") since.setHours(0, 0, 0, 0);
+        else if (dateFilter === "7") since.setDate(since.getDate() - 6);
+        else if (dateFilter === "14") since.setDate(since.getDate() - 13);
+        else if (dateFilter === "30") since.setDate(since.getDate() - 29);
+        else if (dateFilter === "month") since.setDate(1);
+        else since.setFullYear(2020, 0, 1);
+        since.setHours(0, 0, 0, 0);
+        sinceIso = since.toISOString();
+      }
+
+      let q = supabase.from("transactions").select("*").gte("created_at", sinceIso);
+      if (untilIso) q = q.lte("created_at", untilIso);
+      const tx = await q.order("created_at", { ascending: false }).range(0, 9999);
       const txIds = (tx.data ?? []).map((t) => t.id);
       const [items, prods] = await Promise.all([
         txIds.length
@@ -314,6 +323,20 @@ function IncomeDetails() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Custom date range filter (new) */}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground">Rentang Kustom:</span>
+        <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 w-[150px]" />
+        <span className="text-muted-foreground">s/d</span>
+        <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 w-[150px]" />
+        {(fromDate || toDate) && (
+          <Button size="sm" variant="ghost" className="h-8" onClick={() => { setFromDate(""); setToDate(""); }}>Reset</Button>
+        )}
+        {customRange && (
+          <span className="text-[10px] text-primary">(Rentang kustom aktif — filter tanggal di atas diabaikan)</span>
+        )}
       </div>
 
       <div className="relative">

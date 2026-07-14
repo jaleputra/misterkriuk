@@ -50,6 +50,9 @@ function Dashboard() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+  const customRange = !!(fromDate && toDate);
   const [detailModal, setDetailModal] = useState<{
     open: boolean;
     title: string;
@@ -61,28 +64,42 @@ function Dashboard() {
   });
 
   const { data } = useQuery({
-    queryKey: ["dashboard", dateFilter],
+    queryKey: ["dashboard", dateFilter, fromDate, toDate],
     queryFn: async () => {
-      const since = new Date();
-      if (dateFilter === "today") {
-        since.setHours(0, 0, 0, 0);
-      } else if (dateFilter === "7") since.setDate(since.getDate() - 6);
-      else if (dateFilter === "14") since.setDate(since.getDate() - 13);
-      else if (dateFilter === "30") since.setDate(since.getDate() - 29);
-      else if (dateFilter === "month") {
-        since.setDate(1);
+      let since: Date;
+      let until: Date | null = null;
+      if (customRange) {
+        since = new Date(`${fromDate}T00:00:00`);
+        until = new Date(`${toDate}T23:59:59.999`);
       } else {
-        since.setFullYear(2020, 0, 1);
+        since = new Date();
+        if (dateFilter === "today") {
+          since.setHours(0, 0, 0, 0);
+        } else if (dateFilter === "7") since.setDate(since.getDate() - 6);
+        else if (dateFilter === "14") since.setDate(since.getDate() - 13);
+        else if (dateFilter === "30") since.setDate(since.getDate() - 29);
+        else if (dateFilter === "month") {
+          since.setDate(1);
+        } else {
+          since.setFullYear(2020, 0, 1);
+        }
+        since.setHours(0, 0, 0, 0);
       }
-      since.setHours(0, 0, 0, 0);
 
-      const sinceDateStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
+      const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const sinceDateStr = fmt(since);
+      const untilDateStr = until ? fmt(until) : null;
+
+      let txQ = supabase.from("transactions").select("*").gte("created_at", since.toISOString());
+      if (until) txQ = txQ.lte("created_at", until.toISOString());
+      let seQ = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr);
+      if (untilDateStr) seQ = seQ.lte("restock_date", untilDateStr);
 
       const [tx, items, prods, stockEntries, stockMovements] = await Promise.all([
-        supabase.from("transactions").select("*").gte("created_at", since.toISOString()),
+        txQ,
         supabase.from("transaction_items").select("*"),
         supabase.from("products").select("*"),
-        supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr),
+        seQ,
         supabase.from("stock_movements").select("*, products(name)"),
       ]);
       return {
@@ -418,6 +435,20 @@ function Dashboard() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Custom date range filter (new) */}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground">Rentang Kustom:</span>
+        <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 w-[150px]" />
+        <span className="text-muted-foreground">s/d</span>
+        <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 w-[150px]" />
+        {(fromDate || toDate) && (
+          <Button size="sm" variant="ghost" className="h-8" onClick={() => { setFromDate(""); setToDate(""); }}>Reset</Button>
+        )}
+        {customRange && (
+          <span className="text-[10px] text-primary">(Rentang kustom aktif — filter waktu di atas diabaikan)</span>
+        )}
       </div>
 
       {/* Simplified Stat Cards */}
