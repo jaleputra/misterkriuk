@@ -41,10 +41,18 @@ function IncomeDetails() {
       else since.setFullYear(2020, 0, 1);
       since.setHours(0, 0, 0, 0);
 
-      const [tx, items, prods] = await Promise.all([
-        supabase.from("transactions").select("*").gte("created_at", since.toISOString()).order("created_at", { ascending: false }),
-        supabase.from("transaction_items").select("*"),
-        supabase.from("products").select("*"),
+      const tx = await supabase
+        .from("transactions")
+        .select("*")
+        .gte("created_at", since.toISOString())
+        .order("created_at", { ascending: false })
+        .range(0, 9999);
+      const txIds = (tx.data ?? []).map((t) => t.id);
+      const [items, prods] = await Promise.all([
+        txIds.length
+          ? supabase.from("transaction_items").select("*").in("transaction_id", txIds).range(0, 19999)
+          : Promise.resolve({ data: [] as any[] }),
+        supabase.from("products").select("*").range(0, 9999),
       ]);
       return {
         transactions: tx.data ?? [],
@@ -105,7 +113,7 @@ function IncomeDetails() {
 
   const selectedTx = useMemo(() => txs.find((t) => t.id === selectedTxId) ?? null, [txs, selectedTxId]);
 
-  const openTx = (t: any) => {
+  const openTx = async (t: any) => {
     setSelectedTxId(t.id);
     setEditForm({
       payment_method: t.payment_method,
@@ -114,7 +122,14 @@ function IncomeDetails() {
       partner_name: t.partner_name ?? "",
       buyer_name: t.buyer_name ?? "",
     });
-    const txItems = items.filter((i) => i.transaction_id === t.id).map((i) => ({ ...i }));
+    let txItems = items.filter((i) => i.transaction_id === t.id).map((i) => ({ ...i }));
+    if (txItems.length === 0) {
+      const { data: fresh } = await supabase
+        .from("transaction_items")
+        .select("*")
+        .eq("transaction_id", t.id);
+      txItems = (fresh ?? []).map((i) => ({ ...i }));
+    }
     setEditItems(txItems);
   };
 
@@ -145,11 +160,14 @@ function IncomeDetails() {
       if (isCash && cashVal < totalAmt) throw new Error("Uang tunai kurang");
       const changeAmt = isCash ? Math.max(0, cashVal - totalAmt) : null;
 
-      // Restore stock from original items
-      const originalItems = items.filter((i) => i.transaction_id === selectedTxId);
-      for (const oi of originalItems) {
+      // Restore stock from original items (fetch fresh to avoid stale cache)
+      const { data: originalItems } = await supabase
+        .from("transaction_items")
+        .select("*")
+        .eq("transaction_id", selectedTxId);
+      for (const oi of originalItems ?? []) {
         if (oi.product_id) {
-          const { data: prod } = await supabase.from("products").select("stock").eq("id", oi.product_id).single();
+          const { data: prod } = await supabase.from("products").select("stock").eq("id", oi.product_id).maybeSingle();
           if (prod) {
             await supabase.from("products").update({ stock: prod.stock + oi.quantity }).eq("id", oi.product_id);
           }
