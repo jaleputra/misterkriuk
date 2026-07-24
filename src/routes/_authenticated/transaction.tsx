@@ -338,26 +338,26 @@ function TransactionPage() {
               onClick={() => addToCart(p)}
               disabled={out}
               className={[
-                "group relative text-left rounded-2xl border bg-card p-5 transition-all flex items-center gap-5",
+                "group relative text-left rounded-2xl border bg-card p-3 sm:p-5 transition-all flex items-center gap-3 sm:gap-5",
                 out
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:border-primary hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]",
               ].join(" ")}
             >
-              <div className="h-20 w-20 rounded-xl bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
+              <div className="h-14 w-14 sm:h-20 sm:w-20 rounded-xl bg-gradient-to-br from-secondary/40 to-accent/40 grid place-items-center overflow-hidden shrink-0">
                 {p.image_url ? (
                   <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                 ) : (
-                  <Drumstick className="h-10 w-10 text-primary/70" />
+                  <Drumstick className="h-8 w-8 sm:h-10 sm:w-10 text-primary/70" />
                 )}
               </div>
               <div className="flex-1 min-w-0 flex flex-col justify-between gap-1">
-                <div className="font-bold text-sm sm:text-base md:text-lg leading-snug break-words">
+                <div className="font-bold text-xs sm:text-base md:text-lg leading-snug break-words">
                   {p.name}
                 </div>
                 <div className="flex items-center justify-between mt-1 flex-wrap gap-1">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-primary font-bold text-sm sm:text-base md:text-lg">{rupiah(p.price)}</span>
+                    <span className="text-primary font-bold text-xs sm:text-base md:text-lg">{rupiah(p.price)}</span>
                     {activeEvent && p.originalPrice !== p.price && (
                       <span className="text-xs text-muted-foreground line-through">
                         {rupiah(p.originalPrice)}
