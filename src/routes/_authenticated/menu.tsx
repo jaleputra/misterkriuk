@@ -266,19 +266,19 @@ function MenuPage() {
           {visibleProducts.map((p: any) => (
             <div
               key={p.id}
-              className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card hover:bg-accent/20 transition"
+              className="flex items-center justify-between gap-2 p-2 sm:p-3 rounded-lg border bg-card hover:bg-accent/20 transition"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted shrink-0 grid place-items-center">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg overflow-hidden bg-muted shrink-0 grid place-items-center">
                   {p.image_url ? (
                     <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                   ) : (
                     <Drumstick className="h-5 w-5 text-muted-foreground" />
                   )}
                 </div>
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">{p.name}</div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm break-words">{p.name}</div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     <span>
                       {rupiah(p.price)} · Stok {p.stock}
                     </span>
@@ -288,11 +288,12 @@ function MenuPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-1 shrink-0">
+              <div className="flex gap-0.5 sm:gap-1 shrink-0">
                 <Button
                   size="icon"
                   variant="ghost"
                   title="Gandakan"
+                  className="h-8 w-8 sm:h-9 sm:w-9"
                   onClick={() => {
                     setEditing(null);
                     setForm({
@@ -310,6 +311,7 @@ function MenuPage() {
                 <Button
                   size="icon"
                   variant="ghost"
+                  className="h-8 w-8 sm:h-9 sm:w-9"
                   onClick={() => {
                     setEditing(p.id);
                     setForm({
@@ -326,6 +328,7 @@ function MenuPage() {
                 <Button
                   size="icon"
                   variant="ghost"
+                  className="h-8 w-8 sm:h-9 sm:w-9"
                   onClick={() => {
                     if (confirm(`Hapus ${p.name}?`)) del.mutate(p.id);
                   }}
