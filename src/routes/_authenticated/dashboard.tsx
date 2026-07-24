@@ -611,7 +611,7 @@ function Dashboard() {
             </CardHeader>
             <CardContent className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={daily}>
+                <BarChart data={daily}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} />
                   <YAxis
@@ -627,15 +627,13 @@ function Dashboard() {
                       borderRadius: 8,
                     }}
                   />
-                  <Line
-                    type="monotone"
+                  <Bar
                     dataKey="revenue"
                     name="Pendapatan"
-                    stroke="var(--color-primary)"
-                    strokeWidth={2.5}
-                    dot={{ r: 3 }}
+                    fill="var(--color-primary)"
+                    radius={[4, 4, 0, 0]}
                   />
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
