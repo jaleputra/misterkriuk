@@ -14,12 +14,23 @@ function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) 
   const addressLines = settings?.shop_address
     ? Math.max(1, Math.ceil(settings.shop_address.length / 40))
     : 0;
+  const phoneLines = settings?.shop_phone ? 1 : 0;
   const partnerLines = tx.partner_name ? 1 : 0;
   const discountLines = Number(tx.discount_amount) > 0 ? 1 : 0;
   const cashLines = tx.payment_method === "cash" ? 2 : 0;
-  const blockLines = tx.house_block ? 1 : 0;
-  // Top margin y starts at 7mm; keep bottom margin ~7mm to match.
-  return 55 + addressLines * 4 + partnerLines * 4 + discountLines * 4 + cashLines * 4 + blockLines * 6 + tx.items.length * 9;
+
+  let itemsHeight = 0;
+  tx.items.forEach((item) => {
+    const nameLines = Math.max(1, Math.ceil(item.product_name.length / 40));
+    itemsHeight += nameLines * 4 + 5;
+  });
+
+  // Base height is 54. If block is present, we add 2mm (blockHeight) instead of 6mm
+  // to make the bottom margin tighter for the block text (~3mm margin).
+  // If block is not present, it has a safe ~7mm bottom margin to avoid text cutoff.
+  const blockHeight = tx.house_block ? 2 : 0;
+
+  return 54 + addressLines * 4 + phoneLines * 4 + partnerLines * 4 + discountLines * 4 + cashLines * 4 + blockHeight + itemsHeight;
 }
 
 function safeFileName(tx: ReceiptPdfTransaction) {
@@ -111,7 +122,7 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
   const iframe = document.createElement("iframe");
   iframe.style.position = "absolute";
   iframe.style.width = "400px";
-  iframe.style.height = "800px";
+  iframe.style.height = "1500px"; // Make it tall initially to prevent clipping during rendering
   iframe.style.border = "none";
   iframe.style.visibility = "hidden";
   document.body.appendChild(iframe);
@@ -129,13 +140,18 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
           body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 8px;
+            padding: 0;
             background: white;
             color: black;
           }
+          #receipt-capture-area {
+            padding: 4px;
+            background: white;
+            display: inline-block;
+          }
           #receipt-print {
-            width: 280px;
-            padding: 12px;
+            width: 300px;
+            padding: 16px 16px 4px 16px;
             background: white;
             border: 1px solid black;
             border-radius: 6px;
@@ -145,6 +161,8 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
           .center { text-align: center; }
           .text-center { text-align: center; }
           .font-bold { font-weight: bold; }
+          .font-semibold { font-weight: 600; }
+          .text-xs { font-size: 12px; }
           .text-sm { font-size: 14px; }
           .text-lg { font-size: 18px; }
           .mt-3 { margin-top: 12px; }
@@ -161,8 +179,10 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
         </style>
       </head>
       <body>
-        <div id="receipt-print">
-          ${element.innerHTML}
+        <div id="receipt-capture-area">
+          <div id="receipt-print">
+            ${element.innerHTML}
+          </div>
         </div>
       </body>
     </html>
@@ -170,13 +190,16 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
   iframeDoc.close();
 
   // Tunggu agar iframe selesai me-render
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, 150));
 
-  const target = iframeDoc.getElementById("receipt-print");
+  const target = iframeDoc.getElementById("receipt-capture-area");
   if (!target) {
     document.body.removeChild(iframe);
     throw new Error("Target inside iframe not found");
   }
+
+  // Adjust iframe height dynamically based on target's scroll height
+  iframe.style.height = (target.scrollHeight + 50) + "px";
 
   const canvas = await html2canvas(target, {
     scale: 2,

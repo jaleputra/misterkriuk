@@ -24,7 +24,7 @@ interface ReceiptProps {
 
 export function Receipt({ tx, settings }: ReceiptProps) {
   return (
-    <div id="receipt-print" className="text-xs bg-white text-black p-3 rounded-md border">
+    <div id="receipt-print" className="text-xs bg-white text-black pt-4 px-4 pb-1 rounded-md border max-w-[300px] w-full mx-auto box-border shadow-sm my-2">
       <div className="center text-center">
         <div className="font-bold text-sm">{settings?.shop_name ?? "AMI Fried Chicken"}</div>
         {settings?.shop_address && <div>{settings.shop_address}</div>}
