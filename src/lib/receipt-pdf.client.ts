@@ -16,7 +16,10 @@ function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) 
     : 0;
   const partnerLines = tx.partner_name ? 1 : 0;
   const discountLines = Number(tx.discount_amount) > 0 ? 1 : 0;
-  return Math.max(100, 77 + addressLines * 4 + partnerLines * 4 + discountLines * 4 + tx.items.length * 10);
+  const cashLines = tx.payment_method === "cash" ? 2 : 0;
+  const blockLines = tx.house_block ? 1 : 0;
+  // Top margin y starts at 7mm; keep bottom margin ~7mm to match.
+  return 55 + addressLines * 4 + partnerLines * 4 + discountLines * 4 + cashLines * 4 + blockLines * 6 + tx.items.length * 9;
 }
 
 function safeFileName(tx: ReceiptPdfTransaction) {
