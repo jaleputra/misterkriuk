@@ -251,7 +251,7 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
     parts.push(enc.encode(`BLOK: ${tx.house_block.toUpperCase()}\n`));
     parts.push(cmd.doubleOff, cmd.boldOff);
   }
-  parts.push(cmd.feed(3));
+  parts.push(cmd.feed(1));
   parts.push(cmd.cut);
   return concat(parts);
 }
