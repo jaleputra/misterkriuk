@@ -25,8 +25,8 @@ function ReportsPage() {
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    if (!loading && role && role !== "admin") {
-      toast.error("Halaman ini khusus admin");
+    if (!loading && role && role !== "admin" && role !== "cashier") {
+      toast.error("Akses ditolak");
       navigate({ to: "/dashboard" });
     }
   }, [role, loading, navigate]);
@@ -41,7 +41,7 @@ function ReportsPage() {
         .maybeSingle();
       return data;
     },
-    enabled: role === "admin",
+    enabled: role === "admin" || role === "cashier",
   });
 
   useEffect(() => {
@@ -66,7 +66,7 @@ function ReportsPage() {
         .lte("created_at", dayEnd);
       return data ?? [];
     },
-    enabled: role === "admin",
+    enabled: role === "admin" || role === "cashier",
   });
 
   const { data: entries = [] } = useQuery({
@@ -78,7 +78,7 @@ function ReportsPage() {
         .eq("restock_date", date);
       return data ?? [];
     },
-    enabled: role === "admin",
+    enabled: role === "admin" || role === "cashier",
   });
 
   const cashIn = useMemo(
@@ -137,7 +137,7 @@ function ReportsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (loading || role !== "admin") {
+  if (loading || (role !== "admin" && role !== "cashier")) {
     return <div className="text-sm text-muted-foreground">Memuat…</div>;
   }
 
@@ -153,45 +153,83 @@ function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={Wallet} label="Kas Awal" value={rupiah(initialCash)} tone="muted" />
-        <StatCard
-          icon={TrendingUp}
-          label="Pemasukan"
-          value={rupiah(totalIn)}
-          sub={`Cash ${rupiah(cashIn)} · QRIS ${rupiah(qrisIn)}`}
-          tone="success"
-        />
-        <StatCard
-          icon={TrendingDown}
-          label="Pengeluaran"
-          value={rupiah(totalOut)}
-          sub={`Cash ${rupiah(cashOut)} · QRIS ${rupiah(qrisOut)}`}
-          tone="destructive"
-        />
-        <StatCard
-          icon={Calculator}
-          label="Hasil Hari Ini"
-          value={rupiah(todayResult)}
-          sub="Kas Awal + Pemasukan − Pengeluaran"
-          tone="primary"
-        />
-      </div>
+      {role === "admin" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard icon={Wallet} label="Kas Awal" value={rupiah(initialCash)} tone="muted" />
+          <StatCard
+            icon={TrendingUp}
+            label="Pemasukan"
+            value={rupiah(totalIn)}
+            sub={`Cash ${rupiah(cashIn)} · QRIS ${rupiah(qrisIn)}`}
+            tone="success"
+          />
+          <StatCard
+            icon={TrendingDown}
+            label="Pengeluaran"
+            value={rupiah(totalOut)}
+            sub={`Cash ${rupiah(cashOut)} · QRIS ${rupiah(qrisOut)}`}
+            tone="destructive"
+          />
+          <StatCard
+            icon={Calculator}
+            label="Hasil Hari Ini"
+            value={rupiah(todayResult)}
+            sub="Kas Awal + Pemasukan − Pengeluaran"
+            tone="primary"
+          />
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Input Kas Awal & Catatan</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              save.mutate();
-            }}
-          >
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+      {role === "admin" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Input Kas Awal & Catatan</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                save.mutate();
+              }}
+            >
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Kas Awal (Rp)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={initialCashInput}
+                    onChange={(e) => setInitialCashInput(e.target.value)}
+                    placeholder={report?.initial_cash != null ? rupiah(report.initial_cash) : "0"}
+                    disabled={report?.initial_cash != null || save.isPending}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Catatan (opsional)</Label>
+                  <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan hari ini" />
+                </div>
+              </div>
+              <Button type="submit" disabled={save.isPending}>
+                <Save className="h-4 w-4 mr-1" /> Simpan Laporan
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Input Kas Awal</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                save.mutate();
+              }}
+            >
+              <div className="space-y-1.5 max-w-xs">
                 <Label>Kas Awal (Rp)</Label>
                 <Input
                   type="number"
@@ -202,107 +240,133 @@ function ReportsPage() {
                   disabled={report?.initial_cash != null || save.isPending}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label>Catatan (opsional)</Label>
-                <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan hari ini" />
+              {report?.initial_cash == null && (
+                <Button type="submit" disabled={save.isPending}>
+                  <Save className="h-4 w-4 mr-1" /> Simpan Kas Awal
+                </Button>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cashier simplified cards for Total Cash and Total QRIS */}
+      {role === "cashier" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Card>
+            <CardContent className="p-4 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Total Cash</span>
+                <Wallet className="h-4 w-4 text-primary" />
               </div>
-            </div>
-            <Button type="submit" disabled={save.isPending}>
-              <Save className="h-4 w-4 mr-1" /> Simpan Laporan
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              <div className="text-xl font-bold text-primary">{rupiah(totalCashResult)}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Total QRIS</span>
+                <CreditCard className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-xl font-bold text-primary">{rupiah(totalQrisResult)}</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* Ringkasan Kas & QRIS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* Tabel Cash (Tunai) */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-primary" />
-              Aliran Kas (Tunai)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
-              <table className="w-full text-sm text-left border-collapse min-w-[360px]">
-                <thead>
-                  <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                    <th className="px-4 py-3 font-semibold text-center">Kas Awal</th>
-                    <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">Pemasukan Cash</th>
-                    <th className="px-4 py-3 font-semibold text-center text-destructive">Pengeluaran Cash</th>
-                    <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">Total Cash</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border font-medium">
-                  <tr className="hover:bg-muted/10 transition-colors">
-                    <td className="px-4 py-4 text-center">{rupiah(initialCash)}</td>
-                    <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">{rupiah(cashIn)}</td>
-                    <td className="px-4 py-4 text-center text-destructive">{rupiah(cashOut)}</td>
-                    <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">{rupiah(totalCashResult)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+      {role === "admin" && (
+        <>
+          {/* Ringkasan Kas & QRIS */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Tabel Cash (Tunai) */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-primary" />
+                  Aliran Kas (Tunai)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm text-left border-collapse min-w-[360px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3 font-semibold text-center">Kas Awal</th>
+                        <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">Pemasukan Cash</th>
+                        <th className="px-4 py-3 font-semibold text-center text-destructive">Pengeluaran Cash</th>
+                        <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">Total Cash</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      <tr className="hover:bg-muted/10 transition-colors">
+                        <td className="px-4 py-4 text-center">{rupiah(initialCash)}</td>
+                        <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">{rupiah(cashIn)}</td>
+                        <td className="px-4 py-4 text-center text-destructive">{rupiah(cashOut)}</td>
+                        <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">{rupiah(totalCashResult)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Tabel QRIS (Non-Tunai) */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-primary" />
-              Aliran QRIS (Non-Tunai)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
-              <table className="w-full text-sm text-left border-collapse min-w-[300px]">
-                <thead>
-                  <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                    <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">Pemasukan QRIS</th>
-                    <th className="px-4 py-3 font-semibold text-center text-destructive">Pengeluaran QRIS</th>
-                    <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">Total QRIS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border font-medium">
-                  <tr className="hover:bg-muted/10 transition-colors">
-                    <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">{rupiah(qrisIn)}</td>
-                    <td className="px-4 py-4 text-center text-destructive">{rupiah(qrisOut)}</td>
-                    <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">{rupiah(totalQrisResult)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            {/* Tabel QRIS (Non-Tunai) */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                  Aliran QRIS (Non-Tunai)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm text-left border-collapse min-w-[300px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">Pemasukan QRIS</th>
+                        <th className="px-4 py-3 font-semibold text-center text-destructive">Pengeluaran QRIS</th>
+                        <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">Total QRIS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      <tr className="hover:bg-muted/10 transition-colors">
+                        <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">{rupiah(qrisIn)}</td>
+                        <td className="px-4 py-4 text-center text-destructive">{rupiah(qrisOut)}</td>
+                        <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">{rupiah(totalQrisResult)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Rincian Pemasukan</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Cash" value={rupiah(cashIn)} />
-            <Row label="QRIS" value={rupiah(qrisIn)} />
-            <Row label={<b>Total</b>} value={<b>{rupiah(totalIn)}</b>} />
-            <div className="text-xs text-muted-foreground pt-1">{txs.length} transaksi</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Rincian Pengeluaran</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Cash" value={rupiah(cashOut)} />
-            <Row label="QRIS" value={rupiah(qrisOut)} />
-            <Row label={<b>Total</b>} value={<b>{rupiah(totalOut)}</b>} />
-            <div className="text-xs text-muted-foreground pt-1">{entries.length} entri pengeluaran</div>
-          </CardContent>
-        </Card>
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Rincian Pemasukan</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Row label="Cash" value={rupiah(cashIn)} />
+                <Row label="QRIS" value={rupiah(qrisIn)} />
+                <Row label={<b>Total</b>} value={<b>{rupiah(totalIn)}</b>} />
+                <div className="text-xs text-muted-foreground pt-1">{txs.length} transaksi</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Rincian Pengeluaran</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Row label="Cash" value={rupiah(cashOut)} />
+                <Row label="QRIS" value={rupiah(qrisOut)} />
+                <Row label={<b>Total</b>} value={<b>{rupiah(totalOut)}</b>} />
+                <div className="text-xs text-muted-foreground pt-1">{entries.length} entri pengeluaran</div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
     </div>
   );
 }

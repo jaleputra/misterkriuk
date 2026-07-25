@@ -37,14 +37,15 @@ function AuthedLayout() {
     );
   }
 
-  // Cashier route guard: allow transaction, warehouse, expense-details, settings, dashboard, income-details
+  // Cashier route guard: allow transaction, warehouse, expense-details, settings, dashboard, income-details, reports
   const allowedCashierRoutes = [
     "/transaction",
     "/warehouse",
     "/expense-details",
     "/settings",
     "/dashboard",
-    "/income-details"
+    "/income-details",
+    "/reports"
   ];
   const isAllowed = allowedCashierRoutes.some((route) => pathname.startsWith(route));
   if (role === "cashier" && !isAllowed) {

@@ -15,7 +15,7 @@ const items: NavItem[] = [
   { to: "/menu", label: "Menu", icon: UtensilsCrossed, roles: ["admin"] },
   { to: "/transaction", label: "Kasir", icon: ShoppingCart, roles: ["admin", "cashier"] },
   { to: "/warehouse", label: "Pengeluaran", icon: Warehouse, roles: ["admin", "cashier"] },
-  { to: "/reports", label: "Laporan", icon: FileText, roles: ["admin"] },
+  { to: "/reports", label: "Laporan", icon: FileText, roles: ["admin", "cashier"] },
   { to: "/settings", label: "Setelan", icon: Settings, roles: ["admin", "cashier"] },
 ];
 
@@ -26,12 +26,12 @@ export function BottomNav({ role }: { role: AppRole }) {
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto max-w-5xl grid" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0,1fr))` }}>
         {visible.map((item) => {
-          const active = pathname.startsWith(item.to);
+          const active = pathname.startsWith(item.to) || (item.to === "/dashboard" && role === "cashier" && pathname.startsWith("/income-details"));
           const Icon = item.icon;
           return (
             <Link
               key={item.to}
-              to={item.to}
+              to={item.to === "/dashboard" && role === "cashier" ? "/income-details" : item.to}
               className={cn(
                 "flex flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors",
                 active ? "text-primary" : "text-muted-foreground hover:text-foreground",

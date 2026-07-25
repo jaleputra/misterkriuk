@@ -249,9 +249,9 @@ function ExpenseDetails() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Link to="/dashboard">
+          <Link to={role === "cashier" ? "/income-details" : "/dashboard"}>
             <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
+              <ArrowLeft className="h-4 w-4 mr-1" /> {role === "cashier" ? "Pemasukan" : "Dashboard"}
             </Button>
           </Link>
           <h1 className="text-xl font-bold">Detail Pengeluaran</h1>

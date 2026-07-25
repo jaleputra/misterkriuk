@@ -352,11 +352,13 @@ function IncomeDetails() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Link to="/dashboard">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
-            </Button>
-          </Link>
+          {role !== "cashier" && (
+            <Link to="/dashboard">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
+              </Button>
+            </Link>
+          )}
           <h1 className="text-xl font-bold">Detail Pemasukan</h1>
         </div>
         <div className="flex items-center gap-2">
@@ -413,17 +415,19 @@ function IncomeDetails() {
         />
       </div>
 
-      <Card>
-        <CardContent className="p-4 flex justify-between items-center">
-          <div>
-            <div className="text-xs text-muted-foreground">Total Pemasukan</div>
-            <div className="text-2xl font-bold text-success">{role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}</div>
-          </div>
-          <div className="text-right text-xs text-muted-foreground">
-            {txs.length} transaksi
-          </div>
-        </CardContent>
-      </Card>
+      {role !== "cashier" && (
+        <Card>
+          <CardContent className="p-4 flex justify-between items-center">
+            <div>
+              <div className="text-xs text-muted-foreground">Total Pemasukan</div>
+              <div className="text-2xl font-bold text-success">{rupiah(totalRevenue)}</div>
+            </div>
+            <div className="text-right text-xs text-muted-foreground">
+              {txs.length} transaksi
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-2 md:p-4">
