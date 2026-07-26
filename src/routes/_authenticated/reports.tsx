@@ -472,13 +472,19 @@ function ReportsPage() {
                 <Row label="Cash" value={rupiah(cashOut)} />
                 <Row label="QRIS" value={rupiah(qrisOut)} />
                 <Row label={<b>Total</b>} value={<b>{rupiah(totalOut)}</b>} />
-                <div className="text-xs text-muted-foreground pt-1">{entries.length} entri pengeluaran</div>
+                <div className="text-xs text-muted-foreground pt-1">
+                  {expenseEntries.length} entri pengeluaran
+                  {restockEntries.length > 0 && ` · ${restockEntries.length} restok (${rupiah(restockOut)}) tidak dihitung`}
+                </div>
               </CardContent>
             </Card>
           </div>
         </>
       )}
+        </>
+      )}
     </div>
+
   );
 }
 
