@@ -166,6 +166,8 @@ function Dashboard() {
   const products = data?.products ?? [];
   const stockEntries = data?.stockEntries ?? [];
   const stockMovements = data?.stockMovements ?? [];
+  const allRestockEntries = data?.allRestockEntries ?? [];
+
 
   const qc = useQueryClient();
 
