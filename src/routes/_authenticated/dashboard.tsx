@@ -597,21 +597,28 @@ function Dashboard() {
           icon={DollarSign}
           label="Pemasukan"
           value={role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}
-          sub={role === "cashier" ? `${txs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
+          sub={role === "cashier" ? `${salesTxs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${salesTxs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
           onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
         <Stat
           icon={TrendingUp}
           label="Pengeluaran"
           value={role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}
-          sub={`${stockEntries.length} Restok Gudang`}
+          sub={`${expenseEntries.length} Input Pengeluaran`}
+          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
+        />
+        <Stat
+          icon={Package}
+          label="Restok (Keseluruhan)"
+          value={role === "cashier" ? "XXXXX" : rupiah(restockTotal)}
+          sub={`${allRestockEntries.length} Restok · Mengurangi total, bukan harian`}
           onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
         <Stat
           icon={BarChart3}
           label="Pendapatan Bersih"
           value={role === "cashier" ? "XXXXX" : rupiah(netIncome)}
-          sub={role === "cashier" ? "Cash: XXXXX · QRIS: XXXXX" : `Cash: ${rupiah(netCash)} · QRIS: ${rupiah(netQris)}`}
+          sub={role === "cashier" ? "Cash: XXXXX · QRIS: XXXXX" : `Cash: ${rupiah(netCash)} · QRIS: ${rupiah(netQris)} · Restok: -${rupiah(restockTotal)}`}
           onClick={() => setDetailModal({
             open: true,
             title: "Detail Pendapatan Bersih",
@@ -625,7 +632,14 @@ function Dashboard() {
           sub={`Detail: D:${packInfo.dada} · PA:${packInfo.pahaAtas} · PB:${packInfo.pahaBawah} · S:${packInfo.sayap}`}
           onClick={() => navigate({ to: "/sold-products", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
+        <Stat
+          icon={Users}
+          label="Penjualan Partner"
+          value={role === "cashier" ? "XXXXX" : rupiah(partnerRevenue)}
+          sub={`${partnerTxs.length} Tx · Terpisah dari harian`}
+        />
       </div>
+
 
       {role !== "cashier" && (
         <>
