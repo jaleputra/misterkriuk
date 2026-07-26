@@ -135,7 +135,7 @@ function WarehousePage() {
       if (editingEntry) {
         const { error: entryError } = await supabase
           .from("stock_entries")
-          .update({ restock_date: restockDate, shipping_cost: Number(shippingCost || 0), payment_method: paymentMethod })
+          .update({ restock_date: restockDate, shipping_cost: Number(shippingCost || 0), payment_method: paymentMethod, entry_type: entryType })
           .eq("id", editingEntry);
         if (entryError) throw entryError;
         const { error: deleteError } = await supabase
