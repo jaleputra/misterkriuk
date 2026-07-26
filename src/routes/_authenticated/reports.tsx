@@ -23,6 +23,8 @@ function ReportsPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [initialCashInput, setInitialCashInput] = useState("");
   const [note, setNote] = useState("");
+  const [tab, setTab] = useState<"harian" | "partner">("harian");
+
 
   useEffect(() => {
     if (!loading && role && role !== "admin" && role !== "cashier") {
