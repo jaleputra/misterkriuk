@@ -61,7 +61,7 @@ function ReportsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("transactions")
-        .select("total, payment_method, created_at")
+        .select("id, total, payment_method, created_at, sale_category, partner_name, buyer_name")
         .gte("created_at", dayStart)
         .lte("created_at", dayEnd);
       return data ?? [];
@@ -74,20 +74,24 @@ function ReportsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("stock_entries")
-        .select("id, shipping_cost, payment_method, restock_date, stock_movements(quantity, initial_price)")
+        .select("id, shipping_cost, payment_method, restock_date, entry_type, stock_movements(quantity, initial_price)")
         .eq("restock_date", date);
       return data ?? [];
     },
     enabled: role === "admin" || role === "cashier",
   });
 
+  // Transaksi partner dipisah dari laporan harian
+  const partnerTxs = useMemo(() => (txs as any[]).filter((t) => t.sale_category === "partner"), [txs]);
+  const salesTxs = useMemo(() => (txs as any[]).filter((t) => t.sale_category !== "partner"), [txs]);
+
   const cashIn = useMemo(
-    () => txs.filter((t: any) => t.payment_method === "cash").reduce((s: number, t: any) => s + Number(t.total), 0),
-    [txs],
+    () => salesTxs.filter((t: any) => t.payment_method === "cash").reduce((s: number, t: any) => s + Number(t.total), 0),
+    [salesTxs],
   );
   const qrisIn = useMemo(
-    () => txs.filter((t: any) => t.payment_method === "qris").reduce((s: number, t: any) => s + Number(t.total), 0),
-    [txs],
+    () => salesTxs.filter((t: any) => t.payment_method === "qris").reduce((s: number, t: any) => s + Number(t.total), 0),
+    [salesTxs],
   );
   const totalIn = cashIn + qrisIn;
 
@@ -97,20 +101,57 @@ function ReportsPage() {
       (s: number, m: any) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
       0,
     );
-  const cashOut = useMemo(
-    () => (entries as any[]).filter((e) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + entryTotal(e), 0),
+
+  // Restok tidak mengurangi laporan harian
+  const expenseEntries = useMemo(
+    () => (entries as any[]).filter((e) => (e.entry_type ?? "expense") !== "restock"),
     [entries],
+  );
+  const restockEntries = useMemo(
+    () => (entries as any[]).filter((e) => (e.entry_type ?? "expense") === "restock"),
+    [entries],
+  );
+  const restockOut = useMemo(() => restockEntries.reduce((s, e) => s + entryTotal(e), 0), [restockEntries]);
+
+  const cashOut = useMemo(
+    () => expenseEntries.filter((e) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + entryTotal(e), 0),
+    [expenseEntries],
   );
   const qrisOut = useMemo(
-    () => (entries as any[]).filter((e) => e.payment_method === "qris").reduce((s, e) => s + entryTotal(e), 0),
-    [entries],
+    () => expenseEntries.filter((e) => e.payment_method === "qris").reduce((s, e) => s + entryTotal(e), 0),
+    [expenseEntries],
   );
   const totalOut = cashOut + qrisOut;
+
+  // Rekap partner
+  const partnerCashIn = useMemo(
+    () => partnerTxs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0),
+    [partnerTxs],
+  );
+  const partnerQrisIn = useMemo(
+    () => partnerTxs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0),
+    [partnerTxs],
+  );
+  const partnerTotal = partnerCashIn + partnerQrisIn;
+  const partnerGroups = useMemo(() => {
+    const map: Record<string, { name: string; count: number; cash: number; qris: number; total: number }> = {};
+    partnerTxs.forEach((t) => {
+      const name = t.partner_name?.trim() || "Tanpa Nama";
+      if (!map[name]) map[name] = { name, count: 0, cash: 0, qris: 0, total: 0 };
+      const amount = Number(t.total);
+      map[name].count += 1;
+      map[name].total += amount;
+      if (t.payment_method === "qris") map[name].qris += amount;
+      else map[name].cash += amount;
+    });
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  }, [partnerTxs]);
 
   const initialCash = Number(report?.initial_cash ?? 0);
   const todayResult = initialCash + totalIn - totalOut;
   const totalCashResult = initialCash + cashIn - cashOut;
   const totalQrisResult = qrisIn - qrisOut;
+
 
   const save = useMutation({
     mutationFn: async () => {
