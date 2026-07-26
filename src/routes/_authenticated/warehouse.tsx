@@ -78,6 +78,8 @@ function WarehousePage() {
     setRestockDate(new Date().toISOString().slice(0, 10));
     setShippingCost("");
     setPaymentMethod("cash");
+    setEntryType("expense");
+
     setLines([emptyLine()]);
     setEditingEntry(null);
   };
