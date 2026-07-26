@@ -361,40 +361,67 @@ function Dashboard() {
   };
 
   // Pemasukan
-  const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
-  const cashRevenue = useMemo(() => txs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [txs]);
-  const qrisRevenue = useMemo(() => txs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [txs]);
+  // Pemasukan — transaksi partner dipisah (tidak masuk pendapatan harian)
+  const partnerTxs = useMemo(() => txs.filter((t) => t.sale_category === "partner"), [txs]);
+  const salesTxs = useMemo(() => txs.filter((t) => t.sale_category !== "partner"), [txs]);
+  const partnerRevenue = useMemo(() => partnerTxs.reduce((s, t) => s + Number(t.total), 0), [partnerTxs]);
 
-  // Pengeluaran
+  const totalRevenue = useMemo(() => salesTxs.reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
+  const cashRevenue = useMemo(() => salesTxs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
+  const qrisRevenue = useMemo(() => salesTxs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
+
+  // Pengeluaran (tanpa restok — restok dihitung terpisah secara keseluruhan)
+  const expenseEntries = useMemo(
+    () => stockEntries.filter((e: any) => (e.entry_type ?? "expense") !== "restock"),
+    [stockEntries],
+  );
+
   const totalExpenditure = useMemo(() => {
-    const entryIds = new Set(stockEntries.map((e) => e.id));
-    const shipping = stockEntries.reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const entryIds = new Set(expenseEntries.map((e) => e.id));
+    const shipping = expenseEntries.reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
     const materials = stockMovements
       .filter((m) => m.stock_entry_id && entryIds.has(m.stock_entry_id))
       .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
     return shipping + materials;
-  }, [stockEntries, stockMovements]);
+  }, [expenseEntries, stockMovements]);
 
   // Pengeluaran per metode pembayaran
   const cashExpenditure = useMemo(() => {
-    const ids = new Set(stockEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").map((e) => e.id));
-    const ship = stockEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const ids = new Set(expenseEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").map((e) => e.id));
+    const ship = expenseEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
     const mat = stockMovements.filter((m) => m.stock_entry_id && ids.has(m.stock_entry_id))
       .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
     return ship + mat;
-  }, [stockEntries, stockMovements]);
+  }, [expenseEntries, stockMovements]);
   const qrisExpenditure = useMemo(() => {
-    const ids = new Set(stockEntries.filter((e: any) => e.payment_method === "qris").map((e) => e.id));
-    const ship = stockEntries.filter((e: any) => e.payment_method === "qris").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const ids = new Set(expenseEntries.filter((e: any) => e.payment_method === "qris").map((e) => e.id));
+    const ship = expenseEntries.filter((e: any) => e.payment_method === "qris").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
     const mat = stockMovements.filter((m) => m.stock_entry_id && ids.has(m.stock_entry_id))
       .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
     return ship + mat;
-  }, [stockEntries, stockMovements]);
+  }, [expenseEntries, stockMovements]);
 
-  // Pendapatan Bersih (Cash + QRIS net)
+  // Restok — total keseluruhan (semua tanggal), mengurangi pendapatan bersih keseluruhan
+  const restockTotal = useMemo(
+    () =>
+      (allRestockEntries as any[]).reduce(
+        (s, e) =>
+          s +
+          Number(e.shipping_cost ?? 0) +
+          (e.stock_movements ?? []).reduce(
+            (sum: number, m: any) => sum + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
+            0,
+          ),
+        0,
+      ),
+    [allRestockEntries],
+  );
+
+  // Pendapatan Bersih (Cash + QRIS net) dikurangi restok keseluruhan
   const netCash = useMemo(() => cashRevenue - cashExpenditure, [cashRevenue, cashExpenditure]);
   const netQris = useMemo(() => qrisRevenue - qrisExpenditure, [qrisRevenue, qrisExpenditure]);
-  const netIncome = useMemo(() => netCash + netQris, [netCash, netQris]);
+  const netIncome = useMemo(() => netCash + netQris - restockTotal, [netCash, netQris, restockTotal]);
+
 
   // Create product category lookup map
   const productCategoryMap = useMemo(() => {
