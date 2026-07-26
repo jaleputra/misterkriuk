@@ -40,6 +40,8 @@ import {
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
+import { fetchAllRows, fetchAllByIds } from "@/lib/supabase-paginate";
+
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   ssr: false,
