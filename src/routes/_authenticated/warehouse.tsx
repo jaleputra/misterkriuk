@@ -159,6 +159,8 @@ function WarehousePage() {
           restock_date: restockDate,
           shipping_cost: Number(shippingCost || 0),
           payment_method: paymentMethod,
+          entry_type: entryType,
+
           created_by: u.user?.id,
         })
         .select("id")
