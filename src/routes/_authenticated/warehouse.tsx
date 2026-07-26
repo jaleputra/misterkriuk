@@ -48,6 +48,8 @@ function WarehousePage() {
   const [restockDate, setRestockDate] = useState(new Date().toISOString().slice(0, 10));
   const [shippingCost, setShippingCost] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris">("cash");
+  const [entryType, setEntryType] = useState<"expense" | "restock">("expense");
+
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
@@ -76,6 +78,8 @@ function WarehousePage() {
     setRestockDate(new Date().toISOString().slice(0, 10));
     setShippingCost("");
     setPaymentMethod("cash");
+    setEntryType("expense");
+
     setLines([emptyLine()]);
     setEditingEntry(null);
   };
@@ -133,7 +137,7 @@ function WarehousePage() {
       if (editingEntry) {
         const { error: entryError } = await supabase
           .from("stock_entries")
-          .update({ restock_date: restockDate, shipping_cost: Number(shippingCost || 0), payment_method: paymentMethod })
+          .update({ restock_date: restockDate, shipping_cost: Number(shippingCost || 0), payment_method: paymentMethod, entry_type: entryType })
           .eq("id", editingEntry);
         if (entryError) throw entryError;
         const { error: deleteError } = await supabase
@@ -157,6 +161,8 @@ function WarehousePage() {
           restock_date: restockDate,
           shipping_cost: Number(shippingCost || 0),
           payment_method: paymentMethod,
+          entry_type: entryType,
+
           created_by: u.user?.id,
         })
         .select("id")
@@ -199,6 +205,8 @@ function WarehousePage() {
     setRestockDate(entry.restock_date);
     setShippingCost(String(entry.shipping_cost));
     setPaymentMethod((entry.payment_method as "cash" | "qris") ?? "cash");
+    setEntryType((entry.entry_type as "expense" | "restock") ?? "expense");
+
     setLines(
       entry.stock_movements.map((movement: any) => ({
         product_name: (movement.products?.name ?? "").replace(/^\[GUDANG\]\s*/, ""),
@@ -256,6 +264,31 @@ function WarehousePage() {
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label>Jenis Input</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={entryType === "expense" ? "default" : "outline"}
+                  onClick={() => setEntryType("expense")}
+                >
+                  Pengeluaran
+                </Button>
+                <Button
+                  type="button"
+                  variant={entryType === "restock" ? "default" : "outline"}
+                  onClick={() => setEntryType("restock")}
+                >
+                  Restok
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {entryType === "restock"
+                  ? "Restok dihitung terpisah dan mengurangi pendapatan keseluruhan (bukan harian)."
+                  : "Pengeluaran mengurangi pendapatan harian sesuai tanggal & metode pembayaran."}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+
               <Label>Metode Pembayaran</Label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
@@ -392,14 +425,26 @@ function WarehousePage() {
                     year: "numeric",
                   })}
                 </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {entry.stock_movements.length} produk ·{" "}
-                  {entry.stock_movements.reduce(
-                    (sum: number, movement: any) => sum + movement.quantity,
-                    0,
-                  )}{" "}
-                  pcs
+                <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full font-medium ${
+                      (entry.entry_type ?? "expense") === "restock"
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {(entry.entry_type ?? "expense") === "restock" ? "Restok" : "Pengeluaran"}
+                  </span>
+                  <span>
+                    {entry.stock_movements.length} produk ·{" "}
+                    {entry.stock_movements.reduce(
+                      (sum: number, movement: any) => sum + movement.quantity,
+                      0,
+                    )}{" "}
+                    pcs
+                  </span>
                 </div>
+
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <div className="font-semibold text-sm sm:text-base text-foreground">

@@ -15,6 +15,8 @@ import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search } from
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
+import { fetchAllRows, fetchAllByIds } from "@/lib/supabase-paginate";
+
 
 export const Route = createFileRoute("/_authenticated/income-details")({
   validateSearch: (search: Record<string, unknown>) => {
@@ -63,58 +65,36 @@ function IncomeDetails() {
         sinceIso = since.toISOString();
       }
 
-      let q = supabase
-        .from("transactions")
-        .select("*")
-        .gte("created_at", sinceIso)
-        .order("created_at", { ascending: false })
-        .range(0, 9999);
-      if (untilIso) q = q.lte("created_at", untilIso);
+      const txs = await fetchAllRows<any>((from, to) => {
+        let q = supabase
+          .from("transactions")
+          .select("*")
+          .gte("created_at", sinceIso)
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        if (untilIso) q = q.lte("created_at", untilIso);
+        return q;
+      });
 
-      const [txRes, productsRes] = await Promise.all([
-        q,
-        supabase.from("products").select("*").range(0, 9999),
-      ]);
+      const productsData = await fetchAllRows<any>((from, to) =>
+        supabase.from("products").select("*").order("name").range(from, to),
+      );
 
-      if (txRes.error) console.error("income-details tx query error:", txRes.error);
-
-      const txs = txRes.data ?? [];
       const txIds = txs.map((t) => t.id);
 
-      let itemsData: any[] = [];
-      if (txIds.length > 0) {
-        // Chunk transaction IDs to avoid HTTP 414 Request-URI Too Long errors
-        const chunkSize = 100;
-        const chunks = [];
-        for (let i = 0; i < txIds.length; i += chunkSize) {
-          chunks.push(txIds.slice(i, i + chunkSize));
-        }
-
-        const results = await Promise.all(
-          chunks.map((chunk) =>
-            supabase
-              .from("transaction_items")
-              .select("*")
-              .in("transaction_id", chunk)
-              .range(0, 19999)
+      const itemsData = txIds.length
+        ? await fetchAllByIds<any>(txIds, (chunk, from, to) =>
+            supabase.from("transaction_items").select("*").in("transaction_id", chunk).range(from, to),
           )
-        );
-
-        for (const res of results) {
-          if (res.error) {
-            console.error("income-details items query error in chunk:", res.error);
-          } else {
-            itemsData.push(...(res.data ?? []));
-          }
-        }
-      }
+        : [];
 
       return {
         transactions: txs,
         items: itemsData,
-        products: productsRes.data ?? [],
+        products: productsData,
       };
     },
+
     refetchInterval: 30000,
   });
 

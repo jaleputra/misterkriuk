@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
-import { FileText, Save, Wallet, TrendingDown, TrendingUp, Calculator, CreditCard } from "lucide-react";
+import { FileText, Save, Wallet, TrendingDown, TrendingUp, Calculator, CreditCard, Users } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   ssr: false,
@@ -23,6 +23,8 @@ function ReportsPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [initialCashInput, setInitialCashInput] = useState("");
   const [note, setNote] = useState("");
+  const [tab, setTab] = useState<"harian" | "partner">("harian");
+
 
   useEffect(() => {
     if (!loading && role && role !== "admin" && role !== "cashier") {
@@ -61,7 +63,7 @@ function ReportsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("transactions")
-        .select("total, payment_method, created_at")
+        .select("id, total, payment_method, created_at, sale_category, partner_name, buyer_name")
         .gte("created_at", dayStart)
         .lte("created_at", dayEnd);
       return data ?? [];
@@ -74,20 +76,24 @@ function ReportsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("stock_entries")
-        .select("id, shipping_cost, payment_method, restock_date, stock_movements(quantity, initial_price)")
+        .select("id, shipping_cost, payment_method, restock_date, entry_type, stock_movements(quantity, initial_price)")
         .eq("restock_date", date);
       return data ?? [];
     },
     enabled: role === "admin" || role === "cashier",
   });
 
+  // Transaksi partner dipisah dari laporan harian
+  const partnerTxs = useMemo(() => (txs as any[]).filter((t) => t.sale_category === "partner"), [txs]);
+  const salesTxs = useMemo(() => (txs as any[]).filter((t) => t.sale_category !== "partner"), [txs]);
+
   const cashIn = useMemo(
-    () => txs.filter((t: any) => t.payment_method === "cash").reduce((s: number, t: any) => s + Number(t.total), 0),
-    [txs],
+    () => salesTxs.filter((t: any) => t.payment_method === "cash").reduce((s: number, t: any) => s + Number(t.total), 0),
+    [salesTxs],
   );
   const qrisIn = useMemo(
-    () => txs.filter((t: any) => t.payment_method === "qris").reduce((s: number, t: any) => s + Number(t.total), 0),
-    [txs],
+    () => salesTxs.filter((t: any) => t.payment_method === "qris").reduce((s: number, t: any) => s + Number(t.total), 0),
+    [salesTxs],
   );
   const totalIn = cashIn + qrisIn;
 
@@ -97,20 +103,57 @@ function ReportsPage() {
       (s: number, m: any) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
       0,
     );
-  const cashOut = useMemo(
-    () => (entries as any[]).filter((e) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + entryTotal(e), 0),
+
+  // Restok tidak mengurangi laporan harian
+  const expenseEntries = useMemo(
+    () => (entries as any[]).filter((e) => (e.entry_type ?? "expense") !== "restock"),
     [entries],
+  );
+  const restockEntries = useMemo(
+    () => (entries as any[]).filter((e) => (e.entry_type ?? "expense") === "restock"),
+    [entries],
+  );
+  const restockOut = useMemo(() => restockEntries.reduce((s, e) => s + entryTotal(e), 0), [restockEntries]);
+
+  const cashOut = useMemo(
+    () => expenseEntries.filter((e) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + entryTotal(e), 0),
+    [expenseEntries],
   );
   const qrisOut = useMemo(
-    () => (entries as any[]).filter((e) => e.payment_method === "qris").reduce((s, e) => s + entryTotal(e), 0),
-    [entries],
+    () => expenseEntries.filter((e) => e.payment_method === "qris").reduce((s, e) => s + entryTotal(e), 0),
+    [expenseEntries],
   );
   const totalOut = cashOut + qrisOut;
+
+  // Rekap partner
+  const partnerCashIn = useMemo(
+    () => partnerTxs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0),
+    [partnerTxs],
+  );
+  const partnerQrisIn = useMemo(
+    () => partnerTxs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0),
+    [partnerTxs],
+  );
+  const partnerTotal = partnerCashIn + partnerQrisIn;
+  const partnerGroups = useMemo(() => {
+    const map: Record<string, { name: string; count: number; cash: number; qris: number; total: number }> = {};
+    partnerTxs.forEach((t) => {
+      const name = t.partner_name?.trim() || "Tanpa Nama";
+      if (!map[name]) map[name] = { name, count: 0, cash: 0, qris: 0, total: 0 };
+      const amount = Number(t.total);
+      map[name].count += 1;
+      map[name].total += amount;
+      if (t.payment_method === "qris") map[name].qris += amount;
+      else map[name].cash += amount;
+    });
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  }, [partnerTxs]);
 
   const initialCash = Number(report?.initial_cash ?? 0);
   const todayResult = initialCash + totalIn - totalOut;
   const totalCashResult = initialCash + cashIn - cashOut;
   const totalQrisResult = qrisIn - qrisOut;
+
 
   const save = useMutation({
     mutationFn: async () => {
@@ -152,6 +195,74 @@ function ReportsPage() {
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-[170px]" />
         </div>
       </div>
+
+      {role === "admin" && (
+        <div className="flex gap-2">
+          <Button size="sm" variant={tab === "harian" ? "default" : "outline"} onClick={() => setTab("harian")}>
+            Harian
+          </Button>
+          <Button size="sm" variant={tab === "partner" ? "default" : "outline"} onClick={() => setTab("partner")}>
+            Partner
+          </Button>
+        </div>
+      )}
+
+      {tab === "partner" && role === "admin" && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard icon={Users} label="Transaksi Partner" value={`${partnerTxs.length} Tx`} tone="muted" />
+            <StatCard icon={Wallet} label="Partner Cash" value={rupiah(partnerCashIn)} tone="success" />
+            <StatCard icon={CreditCard} label="Partner QRIS" value={rupiah(partnerQrisIn)} tone="success" />
+            <StatCard
+              icon={Calculator}
+              label="Total Partner"
+              value={rupiah(partnerTotal)}
+              sub="Tidak dihitung di laporan harian"
+              tone="primary"
+            />
+          </div>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" /> Rekap per Partner
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {partnerGroups.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Belum ada transaksi partner pada tanggal ini.</div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm border-collapse min-w-[420px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3 text-left font-semibold">Partner</th>
+                        <th className="px-4 py-3 text-center font-semibold">Tx</th>
+                        <th className="px-4 py-3 text-center font-semibold">Cash</th>
+                        <th className="px-4 py-3 text-center font-semibold">QRIS</th>
+                        <th className="px-4 py-3 text-center font-semibold text-primary bg-primary/5">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      {partnerGroups.map((g) => (
+                        <tr key={g.name} className="hover:bg-muted/10 transition-colors">
+                          <td className="px-4 py-3">{g.name}</td>
+                          <td className="px-4 py-3 text-center">{g.count}</td>
+                          <td className="px-4 py-3 text-center">{rupiah(g.cash)}</td>
+                          <td className="px-4 py-3 text-center">{rupiah(g.qris)}</td>
+                          <td className="px-4 py-3 text-center text-primary bg-primary/5 font-bold">{rupiah(g.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {tab === "harian" && (
+        <>
 
       {role === "admin" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -361,13 +472,19 @@ function ReportsPage() {
                 <Row label="Cash" value={rupiah(cashOut)} />
                 <Row label="QRIS" value={rupiah(qrisOut)} />
                 <Row label={<b>Total</b>} value={<b>{rupiah(totalOut)}</b>} />
-                <div className="text-xs text-muted-foreground pt-1">{entries.length} entri pengeluaran</div>
+                <div className="text-xs text-muted-foreground pt-1">
+                  {expenseEntries.length} entri pengeluaran
+                  {restockEntries.length > 0 && ` · ${restockEntries.length} restok (${rupiah(restockOut)}) tidak dihitung`}
+                </div>
               </CardContent>
             </Card>
           </div>
         </>
       )}
+        </>
+      )}
     </div>
+
   );
 }
 

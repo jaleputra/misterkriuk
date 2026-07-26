@@ -36,10 +36,15 @@ import {
   Trash2,
   Save,
   ShoppingBag,
+  Package,
+  Users,
+
 } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
+import { fetchAllRows, fetchAllByIds } from "@/lib/supabase-paginate";
+
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   ssr: false,
@@ -52,7 +57,7 @@ function Dashboard() {
 
   useEffect(() => {
     if (role === "cashier") {
-      navigate({ to: "/income-details", replace: true });
+      navigate({ to: "/income-details", replace: true, search: { dateFilter: "today" } });
     }
   }, [role, navigate]);
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
@@ -96,67 +101,54 @@ function Dashboard() {
       const sinceDateStr = fmt(since);
       const untilDateStr = until ? fmt(until) : null;
 
-      let txQ = supabase
-        .from("transactions")
-        .select("*")
-        .gte("created_at", since.toISOString())
-        .order("created_at", { ascending: false })
-        .range(0, 9999);
-      if (until) txQ = txQ.lte("created_at", until.toISOString());
+      const txs = await fetchAllRows<any>((from, to) => {
+        let q = supabase
+          .from("transactions")
+          .select("*")
+          .gte("created_at", since.toISOString())
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        if (until) q = q.lte("created_at", until.toISOString());
+        return q;
+      });
 
-      let seQ = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr);
-      if (untilDateStr) seQ = seQ.lte("restock_date", untilDateStr);
-
-      const [txRes, productsRes, stockEntriesRes, stockMovementsRes] = await Promise.all([
-        txQ,
-        supabase.from("products").select("*"),
-        seQ,
-        supabase.from("stock_movements").select("*, products(name)"),
+      const [stockEntries, products, stockMovements, allRestockEntries] = await Promise.all([
+        fetchAllRows<any>((from, to) => {
+          let q = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr).range(from, to);
+          if (untilDateStr) q = q.lte("restock_date", untilDateStr);
+          return q;
+        }),
+        fetchAllRows<any>((from, to) => supabase.from("products").select("*").range(from, to)),
+        fetchAllRows<any>((from, to) => supabase.from("stock_movements").select("*, products(name)").range(from, to)),
+        // Restok dihitung keseluruhan (semua tanggal), bukan per tanggal input
+        fetchAllRows<any>((from, to) =>
+          supabase
+            .from("stock_entries")
+            .select("*, stock_movements(quantity, initial_price)")
+            .eq("entry_type", "restock")
+            .range(from, to),
+        ),
       ]);
 
-      if (txRes.error) console.error("dashboard tx query error:", txRes.error);
-
-      const txs = txRes.data ?? [];
       const txIds = txs.map((t) => t.id);
-
-      let itemsData: any[] = [];
-      if (txIds.length > 0) {
-        // Chunk transaction IDs to avoid HTTP 414 Request-URI Too Long errors
-        const chunkSize = 100;
-        const chunks = [];
-        for (let i = 0; i < txIds.length; i += chunkSize) {
-          chunks.push(txIds.slice(i, i + chunkSize));
-        }
-
-        const results = await Promise.all(
-          chunks.map((chunk) =>
-            supabase
-              .from("transaction_items")
-              .select("*")
-              .in("transaction_id", chunk)
-              .range(0, 19999)
+      const itemsData = txIds.length
+        ? await fetchAllByIds<any>(txIds, (chunk, from, to) =>
+            supabase.from("transaction_items").select("*").in("transaction_id", chunk).range(from, to),
           )
-        );
-
-        for (const res of results) {
-          if (res.error) {
-            console.error("dashboard items query error in chunk:", res.error);
-          } else {
-            itemsData.push(...(res.data ?? []));
-          }
-        }
-      }
+        : [];
 
       return {
         transactions: txs,
         items: itemsData,
-        products: productsRes.data ?? [],
-        stockEntries: stockEntriesRes.data ?? [],
-        stockMovements: stockMovementsRes.data ?? [],
+        products,
+        stockEntries,
+        stockMovements,
+        allRestockEntries,
       };
     },
     refetchInterval: 30000,
   });
+
 
   const [deletedTxIds, setDeletedTxIds] = useState<string[]>([]);
   const [localEditedTxs, setLocalEditedTxs] = useState<Record<string, any>>({});
@@ -177,6 +169,8 @@ function Dashboard() {
   const products = data?.products ?? [];
   const stockEntries = data?.stockEntries ?? [];
   const stockMovements = data?.stockMovements ?? [];
+  const allRestockEntries = data?.allRestockEntries ?? [];
+
 
   const qc = useQueryClient();
 
@@ -370,40 +364,67 @@ function Dashboard() {
   };
 
   // Pemasukan
-  const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
-  const cashRevenue = useMemo(() => txs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [txs]);
-  const qrisRevenue = useMemo(() => txs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [txs]);
+  // Pemasukan — transaksi partner dipisah (tidak masuk pendapatan harian)
+  const partnerTxs = useMemo(() => txs.filter((t) => t.sale_category === "partner"), [txs]);
+  const salesTxs = useMemo(() => txs.filter((t) => t.sale_category !== "partner"), [txs]);
+  const partnerRevenue = useMemo(() => partnerTxs.reduce((s, t) => s + Number(t.total), 0), [partnerTxs]);
 
-  // Pengeluaran
+  const totalRevenue = useMemo(() => salesTxs.reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
+  const cashRevenue = useMemo(() => salesTxs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
+  const qrisRevenue = useMemo(() => salesTxs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
+
+  // Pengeluaran (tanpa restok — restok dihitung terpisah secara keseluruhan)
+  const expenseEntries = useMemo(
+    () => stockEntries.filter((e: any) => (e.entry_type ?? "expense") !== "restock"),
+    [stockEntries],
+  );
+
   const totalExpenditure = useMemo(() => {
-    const entryIds = new Set(stockEntries.map((e) => e.id));
-    const shipping = stockEntries.reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const entryIds = new Set(expenseEntries.map((e) => e.id));
+    const shipping = expenseEntries.reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
     const materials = stockMovements
       .filter((m) => m.stock_entry_id && entryIds.has(m.stock_entry_id))
       .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
     return shipping + materials;
-  }, [stockEntries, stockMovements]);
+  }, [expenseEntries, stockMovements]);
 
   // Pengeluaran per metode pembayaran
   const cashExpenditure = useMemo(() => {
-    const ids = new Set(stockEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").map((e) => e.id));
-    const ship = stockEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const ids = new Set(expenseEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").map((e) => e.id));
+    const ship = expenseEntries.filter((e: any) => (e.payment_method ?? "cash") === "cash").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
     const mat = stockMovements.filter((m) => m.stock_entry_id && ids.has(m.stock_entry_id))
       .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
     return ship + mat;
-  }, [stockEntries, stockMovements]);
+  }, [expenseEntries, stockMovements]);
   const qrisExpenditure = useMemo(() => {
-    const ids = new Set(stockEntries.filter((e: any) => e.payment_method === "qris").map((e) => e.id));
-    const ship = stockEntries.filter((e: any) => e.payment_method === "qris").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
+    const ids = new Set(expenseEntries.filter((e: any) => e.payment_method === "qris").map((e) => e.id));
+    const ship = expenseEntries.filter((e: any) => e.payment_method === "qris").reduce((s, e) => s + Number(e.shipping_cost ?? 0), 0);
     const mat = stockMovements.filter((m) => m.stock_entry_id && ids.has(m.stock_entry_id))
       .reduce((s, m) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0), 0);
     return ship + mat;
-  }, [stockEntries, stockMovements]);
+  }, [expenseEntries, stockMovements]);
 
-  // Pendapatan Bersih (Cash + QRIS net)
+  // Restok — total keseluruhan (semua tanggal), mengurangi pendapatan bersih keseluruhan
+  const restockTotal = useMemo(
+    () =>
+      (allRestockEntries as any[]).reduce(
+        (s, e) =>
+          s +
+          Number(e.shipping_cost ?? 0) +
+          (e.stock_movements ?? []).reduce(
+            (sum: number, m: any) => sum + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
+            0,
+          ),
+        0,
+      ),
+    [allRestockEntries],
+  );
+
+  // Pendapatan Bersih (Cash + QRIS net) dikurangi restok keseluruhan
   const netCash = useMemo(() => cashRevenue - cashExpenditure, [cashRevenue, cashExpenditure]);
   const netQris = useMemo(() => qrisRevenue - qrisExpenditure, [qrisRevenue, qrisExpenditure]);
-  const netIncome = useMemo(() => netCash + netQris, [netCash, netQris]);
+  const netIncome = useMemo(() => netCash + netQris - restockTotal, [netCash, netQris, restockTotal]);
+
 
   // Create product category lookup map
   const productCategoryMap = useMemo(() => {
@@ -496,7 +517,7 @@ function Dashboard() {
       d.setDate(d.getDate() - i);
       dailyMap[d.toISOString().slice(0, 10)] = 0;
     }
-    txs.forEach((t) => {
+    salesTxs.forEach((t) => {
       const day = t.created_at.slice(0, 10);
       if (day in dailyMap) dailyMap[day] += Number(t.total);
     });
@@ -504,7 +525,8 @@ function Dashboard() {
       date: new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
       revenue: v,
     }));
-  }, [txs, dateFilter]);
+  }, [salesTxs, dateFilter]);
+
 
   // Payment split pie chart
   const payments = useMemo(() => {
@@ -578,21 +600,28 @@ function Dashboard() {
           icon={DollarSign}
           label="Pemasukan"
           value={role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}
-          sub={role === "cashier" ? `${txs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${txs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
+          sub={role === "cashier" ? `${salesTxs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${salesTxs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
           onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
         <Stat
           icon={TrendingUp}
           label="Pengeluaran"
           value={role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}
-          sub={`${stockEntries.length} Restok Gudang`}
+          sub={`${expenseEntries.length} Input Pengeluaran`}
+          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
+        />
+        <Stat
+          icon={Package}
+          label="Restok (Keseluruhan)"
+          value={role === "cashier" ? "XXXXX" : rupiah(restockTotal)}
+          sub={`${allRestockEntries.length} Restok · Mengurangi total, bukan harian`}
           onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
         <Stat
           icon={BarChart3}
           label="Pendapatan Bersih"
           value={role === "cashier" ? "XXXXX" : rupiah(netIncome)}
-          sub={role === "cashier" ? "Cash: XXXXX · QRIS: XXXXX" : `Cash: ${rupiah(netCash)} · QRIS: ${rupiah(netQris)}`}
+          sub={role === "cashier" ? "Cash: XXXXX · QRIS: XXXXX" : `Cash: ${rupiah(netCash)} · QRIS: ${rupiah(netQris)} · Restok: -${rupiah(restockTotal)}`}
           onClick={() => setDetailModal({
             open: true,
             title: "Detail Pendapatan Bersih",
@@ -606,7 +635,14 @@ function Dashboard() {
           sub={`Detail: D:${packInfo.dada} · PA:${packInfo.pahaAtas} · PB:${packInfo.pahaBawah} · S:${packInfo.sayap}`}
           onClick={() => navigate({ to: "/sold-products", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
+        <Stat
+          icon={Users}
+          label="Penjualan Partner"
+          value={role === "cashier" ? "XXXXX" : rupiah(partnerRevenue)}
+          sub={`${partnerTxs.length} Tx · Terpisah dari harian`}
+        />
       </div>
+
 
       {role !== "cashier" && (
         <>
