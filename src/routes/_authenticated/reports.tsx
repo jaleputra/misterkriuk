@@ -197,6 +197,74 @@ function ReportsPage() {
       </div>
 
       {role === "admin" && (
+        <div className="flex gap-2">
+          <Button size="sm" variant={tab === "harian" ? "default" : "outline"} onClick={() => setTab("harian")}>
+            Harian
+          </Button>
+          <Button size="sm" variant={tab === "partner" ? "default" : "outline"} onClick={() => setTab("partner")}>
+            Partner
+          </Button>
+        </div>
+      )}
+
+      {tab === "partner" && role === "admin" && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard icon={Users} label="Transaksi Partner" value={`${partnerTxs.length} Tx`} tone="muted" />
+            <StatCard icon={Wallet} label="Partner Cash" value={rupiah(partnerCashIn)} tone="success" />
+            <StatCard icon={CreditCard} label="Partner QRIS" value={rupiah(partnerQrisIn)} tone="success" />
+            <StatCard
+              icon={Calculator}
+              label="Total Partner"
+              value={rupiah(partnerTotal)}
+              sub="Tidak dihitung di laporan harian"
+              tone="primary"
+            />
+          </div>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" /> Rekap per Partner
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {partnerGroups.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Belum ada transaksi partner pada tanggal ini.</div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm border-collapse min-w-[420px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3 text-left font-semibold">Partner</th>
+                        <th className="px-4 py-3 text-center font-semibold">Tx</th>
+                        <th className="px-4 py-3 text-center font-semibold">Cash</th>
+                        <th className="px-4 py-3 text-center font-semibold">QRIS</th>
+                        <th className="px-4 py-3 text-center font-semibold text-primary bg-primary/5">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      {partnerGroups.map((g) => (
+                        <tr key={g.name} className="hover:bg-muted/10 transition-colors">
+                          <td className="px-4 py-3">{g.name}</td>
+                          <td className="px-4 py-3 text-center">{g.count}</td>
+                          <td className="px-4 py-3 text-center">{rupiah(g.cash)}</td>
+                          <td className="px-4 py-3 text-center">{rupiah(g.qris)}</td>
+                          <td className="px-4 py-3 text-center text-primary bg-primary/5 font-bold">{rupiah(g.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {tab === "harian" && (
+        <>
+
+      {role === "admin" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard icon={Wallet} label="Kas Awal" value={rupiah(initialCash)} tone="muted" />
           <StatCard
