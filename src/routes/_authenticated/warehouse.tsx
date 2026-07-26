@@ -264,6 +264,31 @@ function WarehousePage() {
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label>Jenis Input</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={entryType === "expense" ? "default" : "outline"}
+                  onClick={() => setEntryType("expense")}
+                >
+                  Pengeluaran
+                </Button>
+                <Button
+                  type="button"
+                  variant={entryType === "restock" ? "default" : "outline"}
+                  onClick={() => setEntryType("restock")}
+                >
+                  Restok
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {entryType === "restock"
+                  ? "Restok dihitung terpisah dan mengurangi pendapatan keseluruhan (bukan harian)."
+                  : "Pengeluaran mengurangi pendapatan harian sesuai tanggal & metode pembayaran."}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+
               <Label>Metode Pembayaran</Label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
