@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/supabase-paginate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,20 +28,48 @@ export const Route = createFileRoute("/_authenticated/warehouse")({
 function WarehousePage() {
   const qc = useQueryClient();
   const { role } = useAuth();
+  const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("all");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+  const customRange = !!(fromDate && toDate);
+
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: async () => (await supabase.from("products").select("*").order("name")).data ?? [],
   });
+
   const { data: entries = [] } = useQuery({
-    queryKey: ["stock_entries"],
-    queryFn: async () =>
-      (
-        await supabase
+    queryKey: ["stock_entries", dateFilter, fromDate, toDate],
+    queryFn: async () => {
+      let sinceDateStr: string | null = null;
+      let untilDateStr: string | null = null;
+
+      if (customRange) {
+        sinceDateStr = fromDate;
+        untilDateStr = toDate;
+      } else if (dateFilter !== "all") {
+        const since = new Date();
+        if (dateFilter === "today") since.setHours(0, 0, 0, 0);
+        else if (dateFilter === "7") since.setDate(since.getDate() - 6);
+        else if (dateFilter === "14") since.setDate(since.getDate() - 13);
+        else if (dateFilter === "30") since.setDate(since.getDate() - 29);
+        else if (dateFilter === "month") since.setDate(1);
+        since.setHours(0, 0, 0, 0);
+        sinceDateStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
+      }
+
+      return await fetchAllRows<any>((from, to) => {
+        let q = supabase
           .from("stock_entries")
           .select("*, stock_movements(*, products(name))")
+          .order("restock_date", { ascending: false })
           .order("created_at", { ascending: false })
-          .limit(20)
-      ).data ?? [],
+          .range(from, to);
+        if (sinceDateStr) q = q.gte("restock_date", sinceDateStr);
+        if (untilDateStr) q = q.lte("restock_date", untilDateStr);
+        return q;
+      });
+    },
   });
 
   type DraftLine = { product_name: string; quantity: string; initial_price: string };
@@ -386,11 +415,69 @@ function WarehousePage() {
 
       <Card className="lg:col-span-3">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <History className="h-4 w-4" /> Riwayat Pengeluaran
+          <CardTitle className="text-base flex items-center justify-between w-full">
+            <span className="flex items-center gap-2">
+              <History className="h-4 w-4" /> Riwayat Pengeluaran
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">
+              {filteredEntries.length} entri
+            </span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-2 border-b pb-3 mb-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-semibold text-muted-foreground">Filter Tanggal:</span>
+              <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
+                <SelectTrigger className="w-[160px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Hari Ini</SelectItem>
+                  <SelectItem value="7">7 Hari Terakhir</SelectItem>
+                  <SelectItem value="14">14 Hari Terakhir</SelectItem>
+                  <SelectItem value="30">30 Hari Terakhir</SelectItem>
+                  <SelectItem value="month">Bulan Ini</SelectItem>
+                  <SelectItem value="all">Semua Waktu</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="text-muted-foreground">Rentang Kustom:</span>
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="h-8 w-[130px] text-xs"
+              />
+              <span className="text-muted-foreground">s/d</span>
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="h-8 w-[130px] text-xs"
+              />
+              {(fromDate || toDate) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => {
+                    setFromDate("");
+                    setToDate("");
+                  }}
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
+            {customRange && (
+              <span className="text-[10px] text-primary italic">
+                (Rentang kustom aktif — filter tanggal di atas diabaikan)
+              </span>
+            )}
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input

@@ -19,6 +19,12 @@ export const Route = createFileRoute("/_authenticated/expense-details")({
       dateFilter: (search.dateFilter as "today" | "7" | "14" | "30" | "month" | "all") || undefined,
       fromDate: (search.fromDate as string) || undefined,
       toDate: (search.toDate as string) || undefined,
+      type: (search.type as "expense" | "restock") || undefined,
+    } as {
+      dateFilter?: "today" | "7" | "14" | "30" | "month" | "all";
+      fromDate?: string;
+      toDate?: string;
+      type?: "expense" | "restock";
     };
   },
   ssr: false,
@@ -110,10 +116,19 @@ function ExpenseDetails() {
   const movements = data?.movements ?? [];
   const products = data?.products ?? [];
 
+  const typeFilter = searchParams.type;
+
   const filteredEntries = useMemo(() => {
+    let result = allEntries;
+    if (typeFilter === "restock") {
+      result = result.filter((e: any) => e.entry_type === "restock");
+    } else if (typeFilter === "expense") {
+      result = result.filter((e: any) => (e.entry_type ?? "expense") !== "restock");
+    }
+
     const term = search.trim().toLocaleLowerCase("id-ID");
-    if (term.length < 3) return allEntries;
-    return allEntries.filter((entry) => {
+    if (term.length < 3) return result;
+    return result.filter((entry) => {
       const entryMovements = movements.filter((m) => m.stock_entry_id === entry.id);
       const productNames = entryMovements
         .map((m: any) => (m.products?.name ?? "").toLocaleLowerCase("id-ID"))
@@ -128,7 +143,7 @@ function ExpenseDetails() {
         .toLocaleLowerCase("id-ID");
       return hay.includes(term);
     });
-  }, [allEntries, movements, search]);
+  }, [allEntries, movements, search, typeFilter]);
 
   const totalExpense = useMemo(() => {
     return filteredEntries.reduce((sum, entry) => {
@@ -219,7 +234,7 @@ function ExpenseDetails() {
       }
     },
     onSuccess: () => {
-      toast.success("Pengeluaran berhasil diperbarui");
+      toast.success(`${selectedEntry?.entry_type === "restock" ? "Restok" : "Pengeluaran"} berhasil diperbarui`);
       closeDialog();
       qc.invalidateQueries({ queryKey: ["expense-details"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -235,7 +250,7 @@ function ExpenseDetails() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Pengeluaran dihapus & stok dikembalikan");
+      toast.success(`${selectedEntry?.entry_type === "restock" ? "Restok" : "Pengeluaran"} dihapus & stok dikembalikan`);
       closeDialog();
       qc.invalidateQueries({ queryKey: ["expense-details"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -254,7 +269,9 @@ function ExpenseDetails() {
               <ArrowLeft className="h-4 w-4 mr-1" /> {role === "cashier" ? "Pemasukan" : "Dashboard"}
             </Button>
           </Link>
-          <h1 className="text-xl font-bold">Detail Pengeluaran</h1>
+          <h1 className="text-xl font-bold">
+            {typeFilter === "restock" ? "Detail Restok" : "Detail Pengeluaran"}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Filter Tanggal:</span>
@@ -301,11 +318,13 @@ function ExpenseDetails() {
       <Card>
         <CardContent className="p-4 flex justify-between items-center">
           <div>
-            <div className="text-xs text-muted-foreground">Total Pengeluaran</div>
+            <div className="text-xs text-muted-foreground">
+              {typeFilter === "restock" ? "Total Restok" : "Total Pengeluaran"}
+            </div>
             <div className="text-2xl font-bold text-destructive">{role === "cashier" ? "XXXXX" : rupiah(totalExpense)}</div>
           </div>
           <div className="text-right text-xs text-muted-foreground">
-            {filteredEntries.length} restok gudang
+            {filteredEntries.length} {typeFilter === "restock" ? "restok" : "pengeluaran"}
           </div>
         </CardContent>
       </Card>
@@ -313,7 +332,9 @@ function ExpenseDetails() {
       <Card>
         <CardContent className="p-2 md:p-4">
           {filteredEntries.length === 0 ? (
-            <p className="text-center text-muted-foreground py-6 text-sm">Belum ada pengeluaran di periode ini.</p>
+            <p className="text-center text-muted-foreground py-6 text-sm">
+              Belum ada {typeFilter === "restock" ? "restok" : "pengeluaran"} di periode ini.
+            </p>
           ) : (
             <div className="divide-y">
               {filteredEntries.map((entry) => {
@@ -332,7 +353,7 @@ function ExpenseDetails() {
                   >
                     <div className="min-w-0 pr-4">
                       <div className="font-semibold truncate">
-                        {groceryNames || `Pengeluaran #${entry.id.slice(0, 8).toUpperCase()}`}
+                        {groceryNames || `${entry.entry_type === "restock" ? "Restok" : "Pengeluaran"} #${entry.id.slice(0, 8).toUpperCase()}`}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Tanggal: {entry.restock_date}
@@ -356,7 +377,9 @@ function ExpenseDetails() {
       <Dialog open={!!selectedEntryId} onOpenChange={(o) => !o && closeDialog()}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Detail Pengeluaran</DialogTitle>
+            <DialogTitle>
+              Detail {selectedEntry?.entry_type === "restock" ? "Restok" : "Pengeluaran"}
+            </DialogTitle>
           </DialogHeader>
           {selectedEntry && (
             <div className="grid md:grid-cols-2 gap-4">
@@ -364,7 +387,9 @@ function ExpenseDetails() {
               <div className="border rounded-lg p-3 bg-muted/20">
                 <div className="border rounded-lg p-4 bg-background space-y-3 font-mono text-xs shadow-sm">
                   <div className="text-center font-bold text-sm">AMI FRIED CHICKEN</div>
-                  <div className="text-center text-[10px] text-muted-foreground border-b pb-2">NOTA RE-STOCK & PENGELUARAN</div>
+                  <div className="text-center text-[10px] text-muted-foreground border-b pb-2">
+                    {selectedEntry?.entry_type === "restock" ? "NOTA RE-STOCK" : "NOTA PENGELUARAN"}
+                  </div>
                   <div className="space-y-1">
                     <div>ID: #{selectedEntry.id.slice(0, 8).toUpperCase()}</div>
                     <div>Tanggal: {editForm.restock_date}</div>
@@ -441,13 +466,15 @@ function ExpenseDetails() {
                     )}
                   </div>
                   <div className="flex justify-between text-sm font-bold pt-1 border-t">
-                    <span>Total Pengeluaran</span>
+                    <span>Total {selectedEntry?.entry_type === "restock" ? "Restok" : "Pengeluaran"}</span>
                     <span className="text-destructive">{rupiah(currentTotal)}</span>
                   </div>
                 </div>
 
                 <div className="space-y-3 border rounded-lg p-3 bg-card">
-                  <h3 className="font-semibold text-sm">Data Pengeluaran</h3>
+                  <h3 className="font-semibold text-sm">
+                    Data {selectedEntry?.entry_type === "restock" ? "Restok" : "Pengeluaran"}
+                  </h3>
                   <div className="space-y-1.5">
                     <Label>Tanggal Restok</Label>
                     <Input
@@ -482,12 +509,12 @@ function ExpenseDetails() {
                   size="sm"
                   disabled={deleteEntry.isPending}
                   onClick={() => {
-                    if (confirm("Hapus pengeluaran ini? Seluruh stok produk terhubung akan otomatis dikurangi kembali.")) {
+                    if (confirm(`Hapus ${selectedEntry?.entry_type === "restock" ? "restok" : "pengeluaran"} ini? Seluruh stok produk terhubung akan otomatis dikurangi kembali.`)) {
                       deleteEntry.mutate(selectedEntry.id);
                     }
                   }}
                 >
-                  <Trash2 className="h-4 w-4 mr-1.5" /> Hapus Pengeluaran
+                  <Trash2 className="h-4 w-4 mr-1.5" /> Hapus {selectedEntry?.entry_type === "restock" ? "Restok" : "Pengeluaran"}
                 </Button>
               </div>
             </div>

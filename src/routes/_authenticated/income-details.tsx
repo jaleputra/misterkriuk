@@ -24,6 +24,12 @@ export const Route = createFileRoute("/_authenticated/income-details")({
       dateFilter: (search.dateFilter as "today" | "7" | "14" | "30" | "month" | "all") || undefined,
       fromDate: (search.fromDate as string) || undefined,
       toDate: (search.toDate as string) || undefined,
+      saleCategory: (search.saleCategory as "regular" | "partner" | "all") || undefined,
+    } as {
+      dateFilter?: "today" | "7" | "14" | "30" | "month" | "all";
+      fromDate?: string;
+      toDate?: string;
+      saleCategory?: "regular" | "partner" | "all";
     };
   },
   ssr: false,
@@ -107,8 +113,15 @@ function IncomeDetails() {
   const items = data?.items ?? [];
   const products = data?.products ?? [];
 
+  const saleCategoryFilter = searchParams.saleCategory;
+
   const txs = useMemo(() => {
     let filtered = allTxs;
+    if (saleCategoryFilter === "partner") {
+      filtered = filtered.filter((t) => t.sale_category === "partner");
+    } else if (saleCategoryFilter === "regular") {
+      filtered = filtered.filter((t) => t.sale_category !== "partner");
+    }
     if (paymentMethodFilter !== "all") {
       filtered = filtered.filter((t) => t.payment_method === paymentMethodFilter);
     }
@@ -133,7 +146,7 @@ function IncomeDetails() {
         .toLocaleLowerCase("id-ID");
       return hay.includes(term);
     });
-  }, [allTxs, items, search, paymentMethodFilter]);
+  }, [allTxs, items, search, paymentMethodFilter, saleCategoryFilter]);
 
   const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
 
@@ -339,7 +352,9 @@ function IncomeDetails() {
               </Button>
             </Link>
           )}
-          <h1 className="text-xl font-bold">Detail Pemasukan</h1>
+          <h1 className="text-xl font-bold">
+            {saleCategoryFilter === "partner" ? "Detail Penjualan Partner" : "Detail Pemasukan"}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Metode:</span>
@@ -399,11 +414,13 @@ function IncomeDetails() {
         <Card>
           <CardContent className="p-4 flex justify-between items-center">
             <div>
-              <div className="text-xs text-muted-foreground">Total Pemasukan</div>
+              <div className="text-xs text-muted-foreground">
+                {saleCategoryFilter === "partner" ? "Total Penjualan Partner" : "Total Pemasukan"}
+              </div>
               <div className="text-2xl font-bold text-success">{rupiah(totalRevenue)}</div>
             </div>
             <div className="text-right text-xs text-muted-foreground">
-              {txs.length} transaksi
+              {txs.length} {saleCategoryFilter === "partner" ? "penjualan partner" : "transaksi"}
             </div>
           </CardContent>
         </Card>
@@ -412,7 +429,9 @@ function IncomeDetails() {
       <Card>
         <CardContent className="p-2 md:p-4">
           {txs.length === 0 ? (
-            <p className="text-center text-muted-foreground py-6 text-sm">Belum ada transaksi di periode ini.</p>
+            <p className="text-center text-muted-foreground py-6 text-sm">
+              Belum ada {saleCategoryFilter === "partner" ? "penjualan partner" : "transaksi"} di periode ini.
+            </p>
           ) : (
             <div className="divide-y">
               {txs.map((t) => (

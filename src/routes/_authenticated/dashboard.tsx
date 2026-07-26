@@ -57,7 +57,7 @@ function Dashboard() {
 
   useEffect(() => {
     if (role === "cashier") {
-      navigate({ to: "/income-details", replace: true, search: { dateFilter: "today" } });
+      navigate({ to: "/income-details", replace: true, search: { dateFilter: "today", fromDate: undefined, toDate: undefined } });
     }
   }, [role, navigate]);
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
@@ -373,6 +373,14 @@ function Dashboard() {
   const cashRevenue = useMemo(() => salesTxs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
   const qrisRevenue = useMemo(() => salesTxs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [salesTxs]);
 
+  // Overall / Combined Revenue (Regular + Partner)
+  const overallCashRevenue = useMemo(() => txs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [txs]);
+  const overallQrisRevenue = useMemo(() => txs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [txs]);
+  const overallRevenue = useMemo(() => overallCashRevenue + overallQrisRevenue, [overallCashRevenue, overallQrisRevenue]);
+
+  const partnerCashRevenue = useMemo(() => partnerTxs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [partnerTxs]);
+  const partnerQrisRevenue = useMemo(() => partnerTxs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [partnerTxs]);
+
   // Pengeluaran (tanpa restok — restok dihitung terpisah secara keseluruhan)
   const expenseEntries = useMemo(
     () => stockEntries.filter((e: any) => (e.entry_type ?? "expense") !== "restock"),
@@ -421,8 +429,8 @@ function Dashboard() {
   );
 
   // Pendapatan Bersih (Cash + QRIS net) dikurangi restok keseluruhan
-  const netCash = useMemo(() => cashRevenue - cashExpenditure, [cashRevenue, cashExpenditure]);
-  const netQris = useMemo(() => qrisRevenue - qrisExpenditure, [qrisRevenue, qrisExpenditure]);
+  const netCash = useMemo(() => overallCashRevenue - cashExpenditure, [overallCashRevenue, cashExpenditure]);
+  const netQris = useMemo(() => overallQrisRevenue - qrisExpenditure, [overallQrisRevenue, qrisExpenditure]);
   const netIncome = useMemo(() => netCash + netQris - restockTotal, [netCash, netQris, restockTotal]);
 
 
@@ -595,27 +603,41 @@ function Dashboard() {
       </div>
 
       {/* Simplified Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Stat
           icon={DollarSign}
-          label="Pemasukan"
-          value={role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}
-          sub={role === "cashier" ? `${salesTxs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${salesTxs.length} Tx · Cash: ${rupiah(cashRevenue)} · QRIS: ${rupiah(qrisRevenue)}`}
-          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
+          label="Pemasukan Keseluruhan"
+          value={role === "cashier" ? "XXXXX" : rupiah(overallRevenue)}
+          sub={role === "cashier" ? `${txs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${txs.length} Tx · Cash: ${rupiah(overallCashRevenue)} · QRIS: ${rupiah(overallQrisRevenue)}`}
+          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, saleCategory: "all" } })}
         />
         <Stat
           icon={TrendingUp}
           label="Pengeluaran"
           value={role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}
           sub={`${expenseEntries.length} Input Pengeluaran`}
-          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
+          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, type: "expense" } })}
         />
         <Stat
           icon={Package}
           label="Restok (Keseluruhan)"
           value={role === "cashier" ? "XXXXX" : rupiah(restockTotal)}
           sub={`${allRestockEntries.length} Restok · Mengurangi total, bukan harian`}
-          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
+          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, type: "restock" } })}
+        />
+        <Stat
+          icon={Users}
+          label="Penjualan Partner"
+          value={role === "cashier" ? "XXXXX" : rupiah(partnerRevenue)}
+          sub={role === "cashier" ? `${partnerTxs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${partnerTxs.length} Tx · Cash: ${rupiah(partnerCashRevenue)} · QRIS: ${rupiah(partnerQrisRevenue)}`}
+          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, saleCategory: "partner" } })}
+        />
+        <Stat
+          icon={ShoppingBag}
+          label="Jumlah Produk Terjual"
+          value={`${totalProductsSold} Pcs (${packInfo.packs} Pack)`}
+          sub={`Detail: D:${packInfo.dada} · PA:${packInfo.pahaAtas} · PB:${packInfo.pahaBawah} · S:${packInfo.sayap}`}
+          onClick={() => navigate({ to: "/sold-products", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
         />
         <Stat
           icon={BarChart3}
@@ -627,19 +649,6 @@ function Dashboard() {
             title: "Detail Pendapatan Bersih",
             type: "pendapatan",
           })}
-        />
-        <Stat
-          icon={ShoppingBag}
-          label="Jumlah Produk Terjual"
-          value={`${totalProductsSold} Pcs (${packInfo.packs} Pack)`}
-          sub={`Detail: D:${packInfo.dada} · PA:${packInfo.pahaAtas} · PB:${packInfo.pahaBawah} · S:${packInfo.sayap}`}
-          onClick={() => navigate({ to: "/sold-products", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
-        />
-        <Stat
-          icon={Users}
-          label="Penjualan Partner"
-          value={role === "cashier" ? "XXXXX" : rupiah(partnerRevenue)}
-          sub={`${partnerTxs.length} Tx · Terpisah dari harian`}
         />
       </div>
 
@@ -964,7 +973,7 @@ function Dashboard() {
             <div className="space-y-3 py-2 text-sm">
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-muted-foreground">Total Pemasukan</span>
-                <span className="font-semibold text-success">{role === "cashier" ? "XXXXX" : rupiah(totalRevenue)}</span>
+                <span className="font-semibold text-success">{role === "cashier" ? "XXXXX" : rupiah(overallRevenue)}</span>
               </div>
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-muted-foreground">Total Pengeluaran</span>
