@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
-import { FileText, Save, Wallet, TrendingDown, TrendingUp, Calculator, CreditCard } from "lucide-react";
+import { FileText, Save, Wallet, TrendingDown, TrendingUp, Calculator, CreditCard, Users } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   ssr: false,
