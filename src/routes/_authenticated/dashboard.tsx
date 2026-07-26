@@ -96,67 +96,54 @@ function Dashboard() {
       const sinceDateStr = fmt(since);
       const untilDateStr = until ? fmt(until) : null;
 
-      let txQ = supabase
-        .from("transactions")
-        .select("*")
-        .gte("created_at", since.toISOString())
-        .order("created_at", { ascending: false })
-        .range(0, 9999);
-      if (until) txQ = txQ.lte("created_at", until.toISOString());
+      const txs = await fetchAllRows<any>((from, to) => {
+        let q = supabase
+          .from("transactions")
+          .select("*")
+          .gte("created_at", since.toISOString())
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        if (until) q = q.lte("created_at", until.toISOString());
+        return q;
+      });
 
-      let seQ = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr);
-      if (untilDateStr) seQ = seQ.lte("restock_date", untilDateStr);
-
-      const [txRes, productsRes, stockEntriesRes, stockMovementsRes] = await Promise.all([
-        txQ,
-        supabase.from("products").select("*"),
-        seQ,
-        supabase.from("stock_movements").select("*, products(name)"),
+      const [stockEntries, products, stockMovements, allRestockEntries] = await Promise.all([
+        fetchAllRows<any>((from, to) => {
+          let q = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr).range(from, to);
+          if (untilDateStr) q = q.lte("restock_date", untilDateStr);
+          return q;
+        }),
+        fetchAllRows<any>((from, to) => supabase.from("products").select("*").range(from, to)),
+        fetchAllRows<any>((from, to) => supabase.from("stock_movements").select("*, products(name)").range(from, to)),
+        // Restok dihitung keseluruhan (semua tanggal), bukan per tanggal input
+        fetchAllRows<any>((from, to) =>
+          supabase
+            .from("stock_entries")
+            .select("*, stock_movements(quantity, initial_price)")
+            .eq("entry_type", "restock")
+            .range(from, to),
+        ),
       ]);
 
-      if (txRes.error) console.error("dashboard tx query error:", txRes.error);
-
-      const txs = txRes.data ?? [];
       const txIds = txs.map((t) => t.id);
-
-      let itemsData: any[] = [];
-      if (txIds.length > 0) {
-        // Chunk transaction IDs to avoid HTTP 414 Request-URI Too Long errors
-        const chunkSize = 100;
-        const chunks = [];
-        for (let i = 0; i < txIds.length; i += chunkSize) {
-          chunks.push(txIds.slice(i, i + chunkSize));
-        }
-
-        const results = await Promise.all(
-          chunks.map((chunk) =>
-            supabase
-              .from("transaction_items")
-              .select("*")
-              .in("transaction_id", chunk)
-              .range(0, 19999)
+      const itemsData = txIds.length
+        ? await fetchAllByIds<any>(txIds, (chunk, from, to) =>
+            supabase.from("transaction_items").select("*").in("transaction_id", chunk).range(from, to),
           )
-        );
-
-        for (const res of results) {
-          if (res.error) {
-            console.error("dashboard items query error in chunk:", res.error);
-          } else {
-            itemsData.push(...(res.data ?? []));
-          }
-        }
-      }
+        : [];
 
       return {
         transactions: txs,
         items: itemsData,
-        products: productsRes.data ?? [],
-        stockEntries: stockEntriesRes.data ?? [],
-        stockMovements: stockMovementsRes.data ?? [],
+        products,
+        stockEntries,
+        stockMovements,
+        allRestockEntries,
       };
     },
     refetchInterval: 30000,
   });
+
 
   const [deletedTxIds, setDeletedTxIds] = useState<string[]>([]);
   const [localEditedTxs, setLocalEditedTxs] = useState<Record<string, any>>({});
