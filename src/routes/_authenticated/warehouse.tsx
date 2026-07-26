@@ -205,6 +205,8 @@ function WarehousePage() {
     setRestockDate(entry.restock_date);
     setShippingCost(String(entry.shipping_cost));
     setPaymentMethod((entry.payment_method as "cash" | "qris") ?? "cash");
+    setEntryType((entry.entry_type as "expense" | "restock") ?? "expense");
+
     setLines(
       entry.stock_movements.map((movement: any) => ({
         product_name: (movement.products?.name ?? "").replace(/^\[GUDANG\]\s*/, ""),
