@@ -36,6 +36,9 @@ import {
   Trash2,
   Save,
   ShoppingBag,
+  Package,
+  Users,
+
 } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
