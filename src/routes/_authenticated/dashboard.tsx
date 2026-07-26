@@ -514,7 +514,7 @@ function Dashboard() {
       d.setDate(d.getDate() - i);
       dailyMap[d.toISOString().slice(0, 10)] = 0;
     }
-    txs.forEach((t) => {
+    salesTxs.forEach((t) => {
       const day = t.created_at.slice(0, 10);
       if (day in dailyMap) dailyMap[day] += Number(t.total);
     });
@@ -522,7 +522,8 @@ function Dashboard() {
       date: new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
       revenue: v,
     }));
-  }, [txs, dateFilter]);
+  }, [salesTxs, dateFilter]);
+
 
   // Payment split pie chart
   const payments = useMemo(() => {
