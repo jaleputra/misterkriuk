@@ -425,14 +425,26 @@ function WarehousePage() {
                     year: "numeric",
                   })}
                 </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {entry.stock_movements.length} produk ·{" "}
-                  {entry.stock_movements.reduce(
-                    (sum: number, movement: any) => sum + movement.quantity,
-                    0,
-                  )}{" "}
-                  pcs
+                <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full font-medium ${
+                      (entry.entry_type ?? "expense") === "restock"
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {(entry.entry_type ?? "expense") === "restock" ? "Restok" : "Pengeluaran"}
+                  </span>
+                  <span>
+                    {entry.stock_movements.length} produk ·{" "}
+                    {entry.stock_movements.reduce(
+                      (sum: number, movement: any) => sum + movement.quantity,
+                      0,
+                    )}{" "}
+                    pcs
+                  </span>
                 </div>
+
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <div className="font-semibold text-sm sm:text-base text-foreground">
