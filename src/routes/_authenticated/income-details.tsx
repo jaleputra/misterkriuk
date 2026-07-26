@@ -15,6 +15,8 @@ import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search } from
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
+import { fetchAllRows, fetchAllByIds } from "@/lib/supabase-paginate";
+
 
 export const Route = createFileRoute("/_authenticated/income-details")({
   validateSearch: (search: Record<string, unknown>) => {
