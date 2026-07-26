@@ -57,7 +57,7 @@ function Dashboard() {
 
   useEffect(() => {
     if (role === "cashier") {
-      navigate({ to: "/income-details", replace: true });
+      navigate({ to: "/income-details", replace: true, search: { dateFilter: "today" } });
     }
   }, [role, navigate]);
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
