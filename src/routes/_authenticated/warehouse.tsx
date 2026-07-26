@@ -48,6 +48,8 @@ function WarehousePage() {
   const [restockDate, setRestockDate] = useState(new Date().toISOString().slice(0, 10));
   const [shippingCost, setShippingCost] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris">("cash");
+  const [entryType, setEntryType] = useState<"expense" | "restock">("expense");
+
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
