@@ -120,11 +120,19 @@ export function printReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdfS
 
 async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvasElement> {
   const iframe = document.createElement("iframe");
+  iframe.setAttribute("scrolling", "no");
+  iframe.setAttribute("width", "500");
+  iframe.setAttribute("height", "1500");
   iframe.style.position = "absolute";
-  iframe.style.width = "400px";
+  iframe.style.left = "0";
+  iframe.style.top = "0";
+  iframe.style.width = "500px";
+  iframe.style.minWidth = "500px";
   iframe.style.height = "1500px"; // Make it tall initially to prevent clipping during rendering
   iframe.style.border = "none";
-  iframe.style.visibility = "hidden";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+  iframe.style.zIndex = "-9999";
   document.body.appendChild(iframe);
 
   const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
@@ -136,21 +144,25 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
   iframeDoc.write(`
     <html>
       <head>
+        <meta name="viewport" content="width=500, initial-scale=1">
         <style>
-          body {
-            font-family: Arial, sans-serif;
+          html, body {
+            width: 500px;
             margin: 0;
             padding: 0;
             background: white;
             color: black;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
           }
           #receipt-capture-area {
-            padding: 4px;
+            width: 310px;
+            padding: 15px;
             background: white;
-            display: inline-block;
+            box-sizing: border-box;
           }
           #receipt-print {
-            width: 300px;
+            width: 280px;
             padding: 16px 16px 4px 16px;
             background: white;
             border: 1px solid black;
@@ -171,6 +183,16 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
           .flex { display: flex; }
           .row { display: flex; }
           .justify-between { justify-content: space-between; }
+          .flex-nowrap { flex-wrap: nowrap; }
+          .shrink-0 { flex-shrink: 0; }
+          .flex-1 { flex: 1 1 0%; }
+          .min-w-0 { min-width: 0px; }
+          .text-right { text-align: right; }
+          .break-words { overflow-wrap: break-word; word-break: break-word; }
+          .break-all { word-break: break-all; }
+          .pl-2 { padding-left: 8px; }
+          .font-mono { font-family: monospace; }
+          .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           hr { border: none; border-top: 1px dashed black; margin: 8px 0; }
           .border { border: 1px solid black; }
           .p-1\\.5 { padding: 6px; }
@@ -200,12 +222,17 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
 
   // Adjust iframe height dynamically based on target's scroll height
   iframe.style.height = (target.scrollHeight + 50) + "px";
+  iframe.setAttribute("height", String(target.scrollHeight + 50));
 
   const canvas = await html2canvas(target, {
-    scale: 2,
+    scale: 2.5,
     backgroundColor: "#ffffff",
     logging: false,
     useCORS: true,
+    width: 310,
+    height: target.scrollHeight,
+    windowWidth: 500,
+    windowHeight: target.scrollHeight + 100,
   });
 
   document.body.removeChild(iframe);
