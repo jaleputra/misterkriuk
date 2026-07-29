@@ -30,7 +30,8 @@ function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) 
   // If block is not present, it has a safe ~7mm bottom margin to avoid text cutoff.
   const blockHeight = tx.house_block ? 2 : 0;
 
-  return 54 + addressLines * 4 + phoneLines * 4 + partnerLines * 4 + discountLines * 4 + cashLines * 4 + blockHeight + itemsHeight;
+  // Add 16mm for the promo text block at the bottom
+  return 54 + addressLines * 4 + phoneLines * 4 + partnerLines * 4 + discountLines * 4 + cashLines * 4 + blockHeight + itemsHeight + 16;
 }
 
 function safeFileName(tx: ReceiptPdfTransaction) {
@@ -99,9 +100,11 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
   }
   divider();
   centerText(`Terima kasih ${tx.partner_name || tx.buyer_name || "Pelanggan"}`.trim());
+  y += 1;
+  centerText("Terima pesanan acara ulang tahun, arisan dan lainnya. Kirim juga kritik dan saran anda ke No Whatsapp 082281384529. Kepuasan anda adalah prioritas kami", 7);
   if (tx.house_block) {
     y += 2;
-    centerText(`BLOK: ${tx.house_block.toUpperCase()}`, 11, true);
+    centerText(tx.house_block.toUpperCase(), 11, true);
   }
 
   return { pdf, fileName: safeFileName(tx) };
@@ -155,21 +158,6 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
             font-family: Arial, sans-serif;
             overflow: hidden;
           }
-          #receipt-capture-area {
-            width: 310px;
-            padding: 15px;
-            background: white;
-            box-sizing: border-box;
-          }
-          #receipt-print {
-            width: 280px;
-            padding: 16px 16px 4px 16px;
-            background: white;
-            border: 1px solid black;
-            border-radius: 6px;
-            font-size: 12px;
-            box-sizing: border-box;
-          }
           .center { text-align: center; }
           .text-center { text-align: center; }
           .font-bold { font-weight: bold; }
@@ -201,8 +189,8 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
         </style>
       </head>
       <body>
-        <div id="receipt-capture-area">
-          <div id="receipt-print">
+        <div id="receipt-capture-area" style="width: 350px; padding: 25px; background: white; box-sizing: border-box;">
+          <div id="receipt-print" style="width: 300px; padding: 16px 16px 4px 16px; background: white; border: 1px solid black; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
             ${element.innerHTML}
           </div>
         </div>
@@ -229,9 +217,9 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
     backgroundColor: "#ffffff",
     logging: false,
     useCORS: true,
-    width: 310,
+    width: 350,
     height: target.scrollHeight,
-    windowWidth: 500,
+    windowWidth: 400,
     windowHeight: target.scrollHeight + 100,
   });
 
@@ -311,6 +299,83 @@ export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: Recei
 }
 
 export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
-  // Delegasikan langsung ke shareReceiptPdf yang memproses penanganan hybrid (PDF / Image Clipboard Copy)
-  await shareReceiptPdf(tx, settings);
+  const element = document.getElementById("receipt-print");
+  if (!element) {
+    throw new Error("Elemen struk tidak ditemukan");
+  }
+
+  const canvas = await captureElementViaIframe(element);
+  const imgBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!imgBlob) {
+    throw new Error("Gagal membuat gambar struk");
+  }
+
+  const fileName = `struk-${tx.id.slice(0, 8).toUpperCase()}.png`;
+  const file = new File([imgBlob], fileName, { type: "image/png" });
+
+  const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
+  const textMessage = `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? customerInfo}.`;
+
+  // 1. Coba bagikan file PNG secara langsung (sangat disukai di perangkat mobile/WhatsApp karena tampil langsung sebagai gambar)
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: fileName,
+        text: textMessage,
+      });
+      toast.success("Gambar struk berhasil dibagikan");
+      return;
+    } catch (shareErr) {
+      if (shareErr instanceof Error && shareErr.name === "AbortError") {
+        console.log("Sharing aborted by user");
+        return;
+      }
+      console.error("Web Share failed, falling back to copy to clipboard", shareErr);
+    }
+  }
+
+  // 2. Fallback untuk Desktop / Browser yang tidak mendukung sharing file PNG langsung:
+  // a. Salin gambar ke clipboard
+  let copiedToClipboard = false;
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          [imgBlob.type]: imgBlob,
+        }),
+      ]);
+      copiedToClipboard = true;
+      toast.success("Gambar struk disalin ke clipboard! Silakan paste (Ctrl+V) di WhatsApp.");
+    } catch (clipErr) {
+      console.error("Gagal menyalin gambar struk ke clipboard", clipErr);
+    }
+  }
+
+  // b. Unduh gambar sebagai cadangan
+  try {
+    const url = URL.createObjectURL(imgBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (downloadErr) {
+    console.error("Gagal mengunduh gambar", downloadErr);
+  }
+
+  // c. Buka WhatsApp Web dengan pesan berisi instruksi
+  const clipboardHint = copiedToClipboard 
+    ? "Gambar struk sudah disalin ke clipboard, silakan Paste (Ctrl+V) di chat WhatsApp." 
+    : "Gambar struk gagal disalin otomatis, silakan lampirkan gambar dari unduhan.";
+  const message = encodeURIComponent(
+    `${textMessage} ${clipboardHint}`
+  );
+  const whatsappUrl = `https://wa.me/?text=${message}`;
+  const whatsappWindow = window.open(whatsappUrl, "_blank");
+  if (!whatsappWindow) {
+    throw new Error("Izinkan pop-up untuk membuka WhatsApp secara otomatis");
+  }
 }

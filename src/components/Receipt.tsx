@@ -93,7 +93,7 @@ export function Receipt({ tx, settings }: ReceiptProps) {
       </div>
       {tx.house_block && (
         <div className="center text-center font-bold text-lg mt-3 border border-black p-1.5 rounded bg-black/5">
-          BLOK: {tx.house_block.toUpperCase()}
+          {tx.house_block.toUpperCase()}
         </div>
       )}
     </div>
