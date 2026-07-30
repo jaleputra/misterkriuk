@@ -58,7 +58,10 @@ export function getPrinterName() {
 }
 
 export function isBluetoothSupported() {
-  return typeof navigator !== "undefined" && !!(navigator as unknown as { bluetooth?: unknown }).bluetooth;
+  return (
+    typeof navigator !== "undefined" &&
+    !!(navigator as unknown as { bluetooth?: unknown }).bluetooth
+  );
 }
 
 async function pickWritableCharacteristic(device: BTDevice): Promise<BTCharacteristic> {
@@ -97,7 +100,11 @@ export async function connectPrinter(): Promise<{ name: string }> {
   if (!nav.bluetooth) throw new Error("Browser tidak mendukung Web Bluetooth");
   const device = await nav.bluetooth.requestDevice({
     acceptAllDevices: true,
-    optionalServices: [SERVICE_UUID, "0000ff00-0000-1000-8000-00805f9b34fb", "00001101-0000-1000-8000-00805f9b34fb"],
+    optionalServices: [
+      SERVICE_UUID,
+      "0000ff00-0000-1000-8000-00805f9b34fb",
+      "00001101-0000-1000-8000-00805f9b34fb",
+    ],
   });
   if (!device.gatt) throw new Error("Perangkat tidak mendukung GATT");
   await device.gatt.connect();
@@ -211,12 +218,17 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   parts.push(cmd.boldOn, cmd.doubleOn);
   parts.push(enc.encode((settings?.shop_name ?? "AMI Fried Chicken") + "\n"));
   parts.push(cmd.doubleOff, cmd.boldOff);
-  if (settings?.shop_address) for (const l of wrap(settings.shop_address, width)) parts.push(enc.encode(l + "\n"));
+  if (settings?.shop_address)
+    for (const l of wrap(settings.shop_address, width)) parts.push(enc.encode(l + "\n"));
   if (settings?.shop_phone) parts.push(enc.encode(settings.shop_phone + "\n"));
   parts.push(cmd.alignLeft);
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(enc.encode(lineBetween("No.", tx.id.slice(0, 8).toUpperCase(), width) + "\n"));
-  parts.push(enc.encode(lineBetween("Tanggal", new Date(tx.created_at).toLocaleString("id-ID"), width) + "\n"));
+  parts.push(
+    enc.encode(
+      lineBetween("Tanggal", new Date(tx.created_at).toLocaleString("id-ID"), width) + "\n",
+    ),
+  );
   if (tx.partner_name)
     parts.push(enc.encode(lineBetween("Partner", tx.partner_name, width) + "\n"));
   parts.push(enc.encode("-".repeat(width) + "\n"));
@@ -245,6 +257,10 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   parts.push(cmd.alignCenter);
   const thanks = `Terima kasih ${tx.partner_name || tx.buyer_name || "Pelanggan"}`;
   for (const l of wrap(thanks, width)) parts.push(enc.encode(l + "\n"));
+  parts.push(enc.encode("\n"));
+  const promo =
+    "Terima pesanan acara ulang tahun, arisan dan lainnya. Kirim juga kritik dan saran anda ke No Whatsapp 082281384529. Kepuasan anda adalah prioritas kami.";
+  for (const l of wrap(promo, width)) parts.push(enc.encode(l + "\n"));
   if (tx.house_block) {
     parts.push(enc.encode("\n"));
     parts.push(cmd.boldOn, cmd.doubleOn);

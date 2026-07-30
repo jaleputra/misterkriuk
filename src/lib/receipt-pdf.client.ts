@@ -31,7 +31,17 @@ function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) 
   const blockHeight = tx.house_block ? 2 : 0;
 
   // Add 16mm for the promo text block at the bottom
-  return 54 + addressLines * 4 + phoneLines * 4 + partnerLines * 4 + discountLines * 4 + cashLines * 4 + blockHeight + itemsHeight + 16;
+  return (
+    54 +
+    addressLines * 4 +
+    phoneLines * 4 +
+    partnerLines * 4 +
+    discountLines * 4 +
+    cashLines * 4 +
+    blockHeight +
+    itemsHeight +
+    16
+  );
 }
 
 function safeFileName(tx: ReceiptPdfTransaction) {
@@ -101,7 +111,10 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
   divider();
   centerText(`Terima kasih ${tx.partner_name || tx.buyer_name || "Pelanggan"}`.trim());
   y += 1;
-  centerText("Terima pesanan acara ulang tahun, arisan dan lainnya. Kirim juga kritik dan saran anda ke No Whatsapp 082281384529. Kepuasan anda adalah prioritas kami", 7);
+  centerText(
+    "Terima pesanan acara ulang tahun, arisan dan lainnya. Kirim juga kritik dan saran anda ke No Whatsapp 082281384529. Kepuasan anda adalah prioritas kami.",
+    7,
+  );
   if (tx.house_block) {
     y += 2;
     centerText(tx.house_block.toUpperCase(), 11, true);
@@ -209,7 +222,7 @@ async function captureElementViaIframe(element: HTMLElement): Promise<HTMLCanvas
   }
 
   // Adjust iframe height dynamically based on target's scroll height
-  iframe.style.height = (target.scrollHeight + 50) + "px";
+  iframe.style.height = target.scrollHeight + 50 + "px";
   iframe.setAttribute("height", String(target.scrollHeight + 50));
 
   const canvas = await html2canvas(target, {
@@ -269,7 +282,9 @@ export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: Recei
     const element = document.getElementById("receipt-print");
     if (element) {
       const canvas = await captureElementViaIframe(element);
-      const imgBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      const imgBlob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
       if (imgBlob && navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([
           new ClipboardItem({
@@ -285,12 +300,10 @@ export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: Recei
   }
 
   // c. Buka WhatsApp Web dengan pesan berisi informasi struk
-  const clipboardHint = copiedToClipboard 
-    ? "Gambar struk sudah disalin ke clipboard, silakan Paste (Ctrl+V) di chat WhatsApp." 
+  const clipboardHint = copiedToClipboard
+    ? "Gambar struk sudah disalin ke clipboard, silakan Paste (Ctrl+V) di chat WhatsApp."
     : `Silakan lampirkan file PDF ${fileName} yang telah diunduh.`;
-  const message = encodeURIComponent(
-    `${textMessage} ${clipboardHint}`
-  );
+  const message = encodeURIComponent(`${textMessage} ${clipboardHint}`);
   const whatsappUrl = `https://wa.me/?text=${message}`;
   const whatsappWindow = window.open(whatsappUrl, "_blank");
   if (!whatsappWindow) {
@@ -367,12 +380,10 @@ export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: Rec
   }
 
   // c. Buka WhatsApp Web dengan pesan berisi instruksi
-  const clipboardHint = copiedToClipboard 
-    ? "Gambar struk sudah disalin ke clipboard, silakan Paste (Ctrl+V) di chat WhatsApp." 
+  const clipboardHint = copiedToClipboard
+    ? "Gambar struk sudah disalin ke clipboard, silakan Paste (Ctrl+V) di chat WhatsApp."
     : "Gambar struk gagal disalin otomatis, silakan lampirkan gambar dari unduhan.";
-  const message = encodeURIComponent(
-    `${textMessage} ${clipboardHint}`
-  );
+  const message = encodeURIComponent(`${textMessage} ${clipboardHint}`);
   const whatsappUrl = `https://wa.me/?text=${message}`;
   const whatsappWindow = window.open(whatsappUrl, "_blank");
   if (!whatsappWindow) {
