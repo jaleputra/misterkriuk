@@ -259,7 +259,7 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   for (const l of wrap(thanks, width)) parts.push(enc.encode(l + "\n"));
   parts.push(enc.encode("\n"));
   const promo =
-    "Terima pesanan acara ulang tahun, arisan dan lainnya. Kirim juga kritik dan saran anda ke No Whatsapp 082281384529. Kepuasan anda adalah prioritas kami.";
+    "Gratis pengantaran dan terima pesanan acara, Hubungi 082281384529";
   for (const l of wrap(promo, width)) parts.push(enc.encode(l + "\n"));
   if (tx.house_block) {
     parts.push(enc.encode("\n"));

@@ -112,7 +112,7 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
   centerText(`Terima kasih ${tx.partner_name || tx.buyer_name || "Pelanggan"}`.trim());
   y += 1;
   centerText(
-    "Terima pesanan acara ulang tahun, arisan dan lainnya. Kirim juga kritik dan saran anda ke No Whatsapp 082281384529. Kepuasan anda adalah prioritas kami.",
+    "Gratis pengantaran dan terima pesanan acara, Hubungi 082281384529",
     7,
   );
   if (tx.house_block) {

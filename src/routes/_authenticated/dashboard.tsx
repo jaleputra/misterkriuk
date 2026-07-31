@@ -523,17 +523,17 @@ function Dashboard() {
     for (let i = daysCount - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      dailyMap[d.toISOString().slice(0, 10)] = 0;
+      dailyMap[d.toLocaleDateString("sv-SE")] = 0;
     }
-    salesTxs.forEach((t) => {
-      const day = t.created_at.slice(0, 10);
+    txs.forEach((t) => {
+      const day = new Date(t.created_at).toLocaleDateString("sv-SE");
       if (day in dailyMap) dailyMap[day] += Number(t.total);
     });
     return Object.entries(dailyMap).map(([d, v]) => ({
       date: new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
       revenue: v,
     }));
-  }, [salesTxs, dateFilter]);
+  }, [txs, dateFilter]);
 
 
   // Payment split pie chart

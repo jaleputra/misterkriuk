@@ -89,7 +89,7 @@ export function Receipt({ tx, settings }: ReceiptProps) {
         Terima kasih {tx.partner_name || tx.buyer_name || "Pelanggan"} 🙏
       </div>
       <div className="center text-center break-words text-[10px] text-muted-foreground mt-2 leading-tight">
-        Terima pesanan acara ulang tahun, arisan dan lainnya. Kirim juga kritik dan saran anda ke No Whatsapp 082281384529. Kepuasan anda adalah prioritas kami.
+        Gratis pengantaran dan terima pesanan acara, Hubungi 082281384529
       </div>
       {tx.house_block && (
         <div className="center text-center font-bold text-lg mt-3 border border-black p-1.5 rounded bg-black/5">
