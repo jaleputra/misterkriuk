@@ -19,7 +19,7 @@ export function AppHeader({ title, role, email }: { title: string; role: string;
             className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0" 
           />
           <div className="min-w-0">
-            <div className="text-xs sm:text-sm font-bold leading-tight truncate">Ayam Kriuk Ami Aneen</div>
+            <div className="text-xs sm:text-sm font-bold leading-tight truncate">Mr Kriuk Ami</div>
             <div className="text-[10px] sm:text-xs text-muted-foreground leading-tight truncate">{title}</div>
           </div>
         </div>

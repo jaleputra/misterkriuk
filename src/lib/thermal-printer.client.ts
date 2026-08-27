@@ -216,7 +216,7 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   parts.push(cmd.init);
   parts.push(cmd.alignCenter);
   parts.push(cmd.boldOn, cmd.doubleOn);
-  parts.push(enc.encode((settings?.shop_name ?? "AMI Fried Chicken") + "\n"));
+  parts.push(enc.encode((settings?.shop_name ?? "Mr Kriuk Ami") + "\n"));
   parts.push(cmd.doubleOff, cmd.boldOff);
   if (settings?.shop_address)
     for (const l of wrap(settings.shop_address, width)) parts.push(enc.encode(l + "\n"));
@@ -284,7 +284,7 @@ export async function testPrint(settings: ReceiptSettings) {
   parts.push(cmd.init, cmd.alignCenter, cmd.boldOn, cmd.doubleOn);
   parts.push(enc.encode("TEST PRINT\n"));
   parts.push(cmd.doubleOff, cmd.boldOff);
-  parts.push(enc.encode((settings?.shop_name ?? "AMI Fried Chicken") + "\n"));
+  parts.push(enc.encode((settings?.shop_name ?? "Mr Kriuk Ami") + "\n"));
   parts.push(cmd.alignLeft);
   parts.push(enc.encode("-".repeat(width) + "\n"));
   parts.push(enc.encode("Printer terhubung dengan baik.\n"));

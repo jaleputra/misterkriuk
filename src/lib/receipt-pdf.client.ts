@@ -79,7 +79,7 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
     y += 4;
   };
 
-  centerText(settings?.shop_name ?? "AMI Fried Chicken", 10, true);
+  centerText(settings?.shop_name ?? "Mr Kriuk Ami", 10, true);
   if (settings?.shop_address) centerText(settings.shop_address);
   if (settings?.shop_phone) centerText(settings.shop_phone);
   divider();
@@ -246,7 +246,7 @@ export async function shareReceiptPdf(tx: ReceiptPdfTransaction, settings: Recei
   const file = new File([blob], fileName, { type: "application/pdf" });
 
   const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
-  const textMessage = `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? customerInfo}.`;
+  const textMessage = `Struk pembayaran ${settings?.shop_name ?? "Mr Kriuk Ami"} untuk ${tx.buyer_name ?? customerInfo}.`;
 
   // 1. Coba gunakan Web Share API untuk membagikan file PDF secara langsung (sangat berguna di perangkat mobile/Safari)
   if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -327,7 +327,7 @@ export async function shareReceiptImage(tx: ReceiptPdfTransaction, settings: Rec
   const file = new File([imgBlob], fileName, { type: "image/png" });
 
   const customerInfo = tx.house_block ? `Blok ${tx.house_block}` : "Pelanggan";
-  const textMessage = `Struk pembayaran ${settings?.shop_name ?? "AMI Fried Chicken"} untuk ${tx.buyer_name ?? customerInfo}.`;
+  const textMessage = `Struk pembayaran ${settings?.shop_name ?? "Mr Kriuk Ami"} untuk ${tx.buyer_name ?? customerInfo}.`;
 
   // 1. Coba bagikan file PNG secara langsung (sangat disukai di perangkat mobile/WhatsApp karena tampil langsung sebagai gambar)
   if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {

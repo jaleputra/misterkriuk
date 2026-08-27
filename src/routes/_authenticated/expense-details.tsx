@@ -386,7 +386,7 @@ function ExpenseDetails() {
               {/* Receipt Preview */}
               <div className="border rounded-lg p-3 bg-muted/20">
                 <div className="border rounded-lg p-4 bg-background space-y-3 font-mono text-xs shadow-sm">
-                  <div className="text-center font-bold text-sm">AMI FRIED CHICKEN</div>
+                  <div className="text-center font-bold text-sm">MR KRIUK AMI</div>
                   <div className="text-center text-[10px] text-muted-foreground border-b pb-2">
                     {selectedEntry?.entry_type === "restock" ? "NOTA RE-STOCK" : "NOTA PENGELUARAN"}
                   </div>

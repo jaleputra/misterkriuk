@@ -106,11 +106,11 @@ function AuthPage() {
 
   return (
     <div className="min-h-screen w-full lg:grid lg:grid-cols-12 overflow-hidden bg-background">
-      {/* Left Column - Booth Ayam Kriuk Ami Aneen Branding Visual */}
+      {/* Left Column - Booth Mr Kriuk Ami Branding Visual */}
       <div className="hidden lg:block lg:col-span-6 xl:col-span-7 relative h-screen bg-neutral-900 overflow-hidden">
         <img
           src="/ami-aneen-booth.jpg"
-          alt="Booth Ayam Kriuk Ami Aneen"
+          alt="Booth Mr Kriuk Ami"
           className="absolute inset-0 w-full h-full object-cover opacity-95 object-center transition-transform duration-[10000ms] hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-neutral-900/10 mix-blend-multiply" />
@@ -119,7 +119,7 @@ function AuthPage() {
         <div className="absolute bottom-12 left-12 right-12 z-20 text-white animate-in fade-in slide-in-from-bottom-6 duration-1000">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/25 backdrop-blur-md border border-primary/45 text-secondary text-xs font-semibold mb-4">
             <img src="/logo.png" alt="Logo" className="h-5 w-5 object-contain" />
-            Booth Resmi Ayam Kriuk Ami Aneen
+            Booth Resmi Mr Kriuk Ami
           </div>
           <h2 className="text-4xl font-extrabold tracking-tight leading-tight text-white mb-2">
             Renyah & Gurih di Setiap Gigitan
@@ -142,14 +142,14 @@ function AuthPage() {
             <CardHeader className="flex flex-col items-center text-center pb-4 pt-8">
               <img
                 src="/logo.png"
-                alt="Logo Ayam Kriuk Ami Aneen"
+                alt="Logo Mr Kriuk Ami"
                 className="h-20 w-20 object-contain mb-3 hover:scale-105 transition-transform duration-300"
               />
               <CardTitle className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-                Ayam Kriuk Ami Aneen
+                Mr Kriuk Ami
               </CardTitle>
               <p className="text-xs font-semibold text-muted-foreground/70 mt-1 uppercase tracking-wider">
-                Sistem Kasir Ayam Kriuk
+                Sistem Kasir Mr Kriuk Ami
               </p>
             </CardHeader>
             <CardContent>
@@ -320,7 +320,7 @@ function AuthPage() {
 
         {/* Footer */}
         <div className="text-center mt-auto pt-6 text-xs text-muted-foreground/60 z-10">
-          © {new Date().getFullYear()} Ayam Kriuk Ami Aneen. All rights reserved.
+          © {new Date().getFullYear()} Mr Kriuk Ami. All rights reserved.
         </div>
       </div>
     </div>
