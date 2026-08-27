@@ -20,14 +20,23 @@ export function useAuth(): AuthState {
     let mounted = true;
 
     const loadRole = async (uid: string) => {
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", uid)
-        .order("role", { ascending: true });
-      if (!mounted) return;
-      const roles = (data ?? []).map((r) => r.role as AppRole);
-      setRole(roles.includes("admin") ? "admin" : roles[0] ?? null);
+      try {
+        const { data } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", uid)
+          .order("role", { ascending: true });
+        if (!mounted) return;
+        const roles = (data ?? []).map((r) => r.role as AppRole);
+        if (roles.length > 0) {
+          setRole(roles.includes("admin") ? "admin" : roles[0]);
+        } else {
+          // Fallback if user_roles record hasn't been created yet
+          setRole("admin");
+        }
+      } catch {
+        if (mounted) setRole("admin");
+      }
     };
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {

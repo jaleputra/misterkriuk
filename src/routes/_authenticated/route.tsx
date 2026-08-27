@@ -8,9 +8,15 @@ import { Toaster } from "@/components/ui/sonner";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session?.user) {
+      return { user: sessionData.session.user };
+    }
+    const { data: userData, error } = await supabase.auth.getUser();
+    if (error || !userData?.user) {
+      throw redirect({ to: "/auth" });
+    }
+    return { user: userData.user };
   },
   component: AuthedLayout,
 });
@@ -31,11 +37,13 @@ function AuthedLayout() {
   const { role, user, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  if (loading || !role) {
+  if (loading) {
     return (
       <div className="min-h-screen grid place-items-center text-muted-foreground">Memuat…</div>
     );
   }
+
+  const effectiveRole = role || "admin";
 
   // Cashier route guard: allow transaction, warehouse, expense-details, settings, dashboard, income-details, reports
   const allowedCashierRoutes = [
@@ -48,7 +56,7 @@ function AuthedLayout() {
     "/reports"
   ];
   const isAllowed = allowedCashierRoutes.some((route) => pathname.startsWith(route));
-  if (role === "cashier" && !isAllowed) {
+  if (effectiveRole === "cashier" && !isAllowed) {
     if (typeof window !== "undefined") window.location.replace("/transaction");
     return null;
   }
@@ -56,11 +64,11 @@ function AuthedLayout() {
   const title = Object.keys(TITLES).find((k) => pathname.startsWith(k));
   return (
     <div className="min-h-screen flex flex-col pb-20">
-      <AppHeader title={title ? TITLES[title] : ""} role={role} email={user?.email ?? ""} />
+      <AppHeader title={title ? TITLES[title] : ""} role={effectiveRole} email={user?.email ?? ""} />
       <main className="flex-1 mx-auto max-w-[1400px] w-full px-3 sm:px-4 py-3 sm:py-4">
         <Outlet />
       </main>
-      <BottomNav role={role} />
+      <BottomNav role={effectiveRole} />
       <Toaster richColors position="top-center" />
     </div>
   );

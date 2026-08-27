@@ -36,37 +36,86 @@ function AuthPage() {
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) toast.error(error.message);
-    else toast.success("Login berhasil");
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        if (error.message.toLowerCase().includes("invalid login credentials")) {
+          toast.error("Email atau password salah. Jika belum terdaftar, silakan buat akun di tab 'Daftar'.");
+        } else if (error.message.toLowerCase().includes("email not confirmed")) {
+          toast.error("Email belum dikonfirmasi. Harap matikan 'Confirm Email' di dashboard Supabase.");
+        } else {
+          toast.error(error.message);
+        }
+        return;
+      }
+      if (data?.session) {
+        toast.success("Login berhasil! Membuka kasir...");
+        window.location.href = "/transaction";
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal melakukan login");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: window.location.origin, data: { name } },
-    });
-    setLoading(false);
-    if (error) toast.error(error.message);
-    else toast.success("Pendaftaran berhasil");
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: { emailRedirectTo: window.location.origin, data: { name: name.trim() } },
+      });
+      if (error) {
+        if (error.message.toLowerCase().includes("disabled") || (error as any).code === "email_provider_disabled") {
+          toast.error("Email Provider dinonaktifkan di Supabase. Aktifkan kembali switch 'Enable Email provider' di Authentication > Providers > Email.");
+        } else if (error.message.toLowerCase().includes("rate limit")) {
+          toast.error("Limit email Supabase tercapai. Harap nonaktifkan hanya 'Confirm email' di Dashboard Supabase.");
+        } else {
+          toast.error(error.message);
+        }
+        return;
+      }
+      if (data?.session) {
+        toast.success("Pendaftaran berhasil! Membuka kasir...");
+        window.location.href = "/transaction";
+      } else if (data?.user) {
+        // Coba langsung login jika email confirmation sudah dimatikan
+        const { data: signInData } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (signInData?.session) {
+          toast.success("Pendaftaran & Login berhasil! Membuka kasir...");
+          window.location.href = "/transaction";
+        } else {
+          toast.info("Akun berhasil dibuat. Silakan login pada tab Masuk.");
+        }
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal melakukan pendaftaran");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen w-full lg:grid lg:grid-cols-12 overflow-hidden bg-background">
       {/* Left Column - Booth Ayam Kriuk Ami Aneen Branding Visual */}
       <div className="hidden lg:block lg:col-span-6 xl:col-span-7 relative h-screen bg-neutral-900 overflow-hidden">
-        <img 
-          src="/ami-aneen-booth.jpg" 
-          alt="Booth Ayam Kriuk Ami Aneen" 
-          className="absolute inset-0 w-full h-full object-cover opacity-95 object-center transition-transform duration-[10000ms] hover:scale-105" 
+        <img
+          src="/ami-aneen-booth.jpg"
+          alt="Booth Ayam Kriuk Ami Aneen"
+          className="absolute inset-0 w-full h-full object-cover opacity-95 object-center transition-transform duration-[10000ms] hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-neutral-900/10 mix-blend-multiply" />
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-neutral-950/10" />
-        
+
         <div className="absolute bottom-12 left-12 right-12 z-20 text-white animate-in fade-in slide-in-from-bottom-6 duration-1000">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/25 backdrop-blur-md border border-primary/45 text-secondary text-xs font-semibold mb-4">
             <img src="/logo.png" alt="Logo" className="h-5 w-5 object-contain" />
@@ -91,10 +140,10 @@ function AuthPage() {
           {/* Auth Card */}
           <Card className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl border border-white/40 dark:border-neutral-800/40 shadow-[0_20px_50px_rgba(0,0,0,0.04)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
             <CardHeader className="flex flex-col items-center text-center pb-4 pt-8">
-              <img 
-                src="/logo.png" 
-                alt="Logo Ayam Kriuk Ami Aneen" 
-                className="h-20 w-20 object-contain mb-3 hover:scale-105 transition-transform duration-300" 
+              <img
+                src="/logo.png"
+                alt="Logo Ayam Kriuk Ami Aneen"
+                className="h-20 w-20 object-contain mb-3 hover:scale-105 transition-transform duration-300"
               />
               <CardTitle className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
                 Ayam Kriuk Ami Aneen
@@ -106,13 +155,13 @@ function AuthPage() {
             <CardContent>
               <Tabs defaultValue="signin" className="w-full">
                 <TabsList className="grid grid-cols-2 h-11 p-1 bg-neutral-100/80 dark:bg-neutral-950/80 rounded-2xl mb-6 border border-neutral-200/20">
-                  <TabsTrigger 
+                  <TabsTrigger
                     value="signin"
                     className="h-9 rounded-xl text-sm font-semibold transition-all duration-300 cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:text-primary data-[state=active]:shadow-sm"
                   >
                     Masuk
                   </TabsTrigger>
-                  <TabsTrigger 
+                  <TabsTrigger
                     value="signup"
                     className="h-9 rounded-xl text-sm font-semibold transition-all duration-300 cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:text-primary data-[state=active]:shadow-sm"
                   >
@@ -126,11 +175,11 @@ function AuthPage() {
                       <Label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Email</Label>
                       <div className="relative">
                         <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/70" />
-                        <Input 
-                          type="email" 
-                          required 
-                          value={email} 
-                          onChange={(e) => setEmail(e.target.value)} 
+                        <Input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
                           className="pl-10 h-11 bg-white/50 dark:bg-neutral-950/50 border-neutral-200/80 dark:border-neutral-800/80 rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all duration-200"
                           placeholder="nama@email.com"
                         />
@@ -141,11 +190,11 @@ function AuthPage() {
                       <Label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Password</Label>
                       <div className="relative">
                         <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/70" />
-                        <Input 
-                          type={showPassword ? "text" : "password"} 
-                          required 
-                          value={password} 
-                          onChange={(e) => setPassword(e.target.value)} 
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
                           className="pl-10 pr-10 h-11 bg-white/50 dark:bg-neutral-950/50 border-neutral-200/80 dark:border-neutral-800/80 rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all duration-200"
                           placeholder="••••••••"
                         />
@@ -159,9 +208,9 @@ function AuthPage() {
                       </div>
                     </div>
 
-                    <Button 
+                    <Button
                       className="w-full h-11 bg-gradient-to-r from-primary to-accent hover:opacity-95 text-primary-foreground font-semibold rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-primary/20 active:scale-[0.98] mt-6 flex items-center justify-center gap-2 cursor-pointer"
-                      type="submit" 
+                      type="submit"
                       disabled={loading}
                     >
                       {loading ? (
@@ -188,10 +237,10 @@ function AuthPage() {
                       <Label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Nama Lengkap</Label>
                       <div className="relative">
                         <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/70" />
-                        <Input 
-                          required 
-                          value={name} 
-                          onChange={(e) => setName(e.target.value)} 
+                        <Input
+                          required
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
                           className="pl-10 h-11 bg-white/50 dark:bg-neutral-950/50 border-neutral-200/80 dark:border-neutral-800/80 rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all duration-200"
                           placeholder="Nama Anda"
                         />
@@ -202,11 +251,11 @@ function AuthPage() {
                       <Label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Email</Label>
                       <div className="relative">
                         <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/70" />
-                        <Input 
-                          type="email" 
-                          required 
-                          value={email} 
-                          onChange={(e) => setEmail(e.target.value)} 
+                        <Input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
                           className="pl-10 h-11 bg-white/50 dark:bg-neutral-950/50 border-neutral-200/80 dark:border-neutral-800/80 rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all duration-200"
                           placeholder="nama@email.com"
                         />
@@ -217,12 +266,12 @@ function AuthPage() {
                       <Label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Password</Label>
                       <div className="relative">
                         <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/70" />
-                        <Input 
-                          type={showPassword ? "text" : "password"} 
-                          minLength={6} 
-                          required 
-                          value={password} 
-                          onChange={(e) => setPassword(e.target.value)} 
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          minLength={6}
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
                           className="pl-10 pr-10 h-11 bg-white/50 dark:bg-neutral-950/50 border-neutral-200/80 dark:border-neutral-800/80 rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all duration-200"
                           placeholder="Minimal 6 karakter"
                         />
@@ -236,9 +285,9 @@ function AuthPage() {
                       </div>
                     </div>
 
-                    <Button 
+                    <Button
                       className="w-full h-11 bg-gradient-to-r from-primary to-accent hover:opacity-95 text-primary-foreground font-semibold rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-primary/20 active:scale-[0.98] mt-6 flex items-center justify-center gap-2 cursor-pointer"
-                      type="submit" 
+                      type="submit"
                       disabled={loading}
                     >
                       {loading ? (
