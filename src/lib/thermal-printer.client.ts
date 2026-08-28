@@ -57,6 +57,23 @@ export function getPrinterName() {
   return state.device?.name ?? null;
 }
 
+const KNOWN_PRINTER_SERVICES = [
+  SERVICE_UUID,
+  "0000ffe0-0000-1000-8000-00805f9b34fb", // HM-10, ZJiang, Panda, Iware, Eppos, Generic 58mm
+  "0000ffe1-0000-1000-8000-00805f9b34fb",
+  "0000ff00-0000-1000-8000-00805f9b34fb", // Generic POS
+  "00001101-0000-1000-8000-00805f9b34fb", // Serial Port Profile
+  "0000fee7-0000-1000-8000-00805f9b34fb", // Tencent/Generic BLE
+  "49535343-fe7d-4ae5-8fa9-9fafd205e455", // ISSC Transparent UART
+  "e7810a71-73ae-499d-8c15-faa9aef0c3f2", // Generic Thermal Printer
+  "0000ae00-0000-1000-8000-00805f9b34fb",
+  "0000ae30-0000-1000-8000-00805f9b34fb",
+  "0000af30-0000-1000-8000-00805f9b34fb",
+  "000018f1-0000-1000-8000-00805f9b34fb",
+  "0000fff0-0000-1000-8000-00805f9b34fb",
+  "0000ffff-0000-1000-8000-00805f9b34fb",
+];
+
 export function isBluetoothSupported() {
   return (
     typeof navigator !== "undefined" &&
@@ -64,49 +81,121 @@ export function isBluetoothSupported() {
   );
 }
 
+export function getBluetoothDiagnostic(): { supported: boolean; message: string } {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return { supported: false, message: "Lingkungan server tidak mendukung Bluetooth." };
+  }
+  const isSecure =
+    window.location.protocol === "https:" ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+
+  if (!isSecure) {
+    return {
+      supported: false,
+      message:
+        "Web Bluetooth membutuhkan koneksi aman (HTTPS atau localhost). Jika membuka via IP LAN, gunakan HTTPS atau buka via localhost.",
+    };
+  }
+
+  const nav = navigator as unknown as { bluetooth?: unknown };
+  if (!nav.bluetooth) {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isFirefox = navigator.userAgent.toLowerCase().includes("firefox");
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    if (isIOS) {
+      return {
+        supported: false,
+        message:
+          "iOS/Safari tidak mendukung Web Bluetooth. Anda dapat menggunakan browser khusus seperti 'Bluefy' di App Store, atau gunakan tombol Cetak Sistem (PDF).",
+      };
+    }
+    if (isSafari) {
+      return {
+        supported: false,
+        message:
+          "Safari tidak mendukung Web Bluetooth. Silakan gunakan Google Chrome atau Microsoft Edge untuk menghubungkan printer Bluetooth.",
+      };
+    }
+    if (isFirefox) {
+      return {
+        supported: false,
+        message:
+          "Firefox tidak mendukung Web Bluetooth. Silakan gunakan Google Chrome atau Microsoft Edge.",
+      };
+    }
+    return {
+      supported: false,
+      message:
+        "Browser ini tidak mendukung Web Bluetooth. Disarankan menggunakan Google Chrome atau Microsoft Edge.",
+    };
+  }
+
+  return {
+    supported: true,
+    message: "Web Bluetooth didukung oleh browser ini.",
+  };
+}
+
 async function pickWritableCharacteristic(device: BTDevice): Promise<BTCharacteristic> {
   if (!device.gatt) throw new Error("Perangkat tidak mendukung GATT");
-  try {
-    const svc = await device.gatt.getPrimaryService(SERVICE_UUID);
+  for (const sUuid of KNOWN_PRINTER_SERVICES) {
     try {
-      const ch = await svc.getCharacteristic(CHAR_UUID);
-      return ch;
+      const svc = await device.gatt.getPrimaryService(sUuid);
+      try {
+        const ch = await svc.getCharacteristic(CHAR_UUID);
+        return ch;
+      } catch {
+        const chars = await svc.getCharacteristics();
+        const w = chars.find((c) => c.properties.write || c.properties.writeWithoutResponse);
+        if (w) return w;
+      }
     } catch {
-      const chars = await svc.getCharacteristics();
-      const w = chars.find((c) => c.properties.write || c.properties.writeWithoutResponse);
-      if (w) return w;
+      // try next known service
+    }
+  }
+
+  // Fallback to scanning all primary services
+  try {
+    const services = await device.gatt.getPrimaryServices();
+    for (const svc of services) {
+      try {
+        const chars = await svc.getCharacteristics();
+        const w = chars.find((c) => c.properties.write || c.properties.writeWithoutResponse);
+        if (w) return w;
+      } catch {
+        // continue
+      }
     }
   } catch {
-    // fall back to scanning all services
+    // ignore
   }
-  const services = await device.gatt.getPrimaryServices();
-  for (const svc of services) {
-    const chars = await svc.getCharacteristics();
-    const w = chars.find((c) => c.properties.write || c.properties.writeWithoutResponse);
-    if (w) return w;
-  }
-  throw new Error("Karakteristik printer tidak ditemukan");
+
+  throw new Error("Karakteristik penulisan data printer tidak ditemukan");
 }
 
 export async function connectPrinter(): Promise<{ name: string }> {
+  const diag = getBluetoothDiagnostic();
+  if (!diag.supported) {
+    throw new Error(diag.message);
+  }
+
   const nav = navigator as unknown as {
-    bluetooth?: {
+    bluetooth: {
       requestDevice: (opts: {
         acceptAllDevices?: boolean;
         optionalServices?: string[];
       }) => Promise<BTDevice>;
     };
   };
-  if (!nav.bluetooth) throw new Error("Browser tidak mendukung Web Bluetooth");
+
   const device = await nav.bluetooth.requestDevice({
     acceptAllDevices: true,
-    optionalServices: [
-      SERVICE_UUID,
-      "0000ff00-0000-1000-8000-00805f9b34fb",
-      "00001101-0000-1000-8000-00805f9b34fb",
-    ],
+    optionalServices: KNOWN_PRINTER_SERVICES,
   });
-  if (!device.gatt) throw new Error("Perangkat tidak mendukung GATT");
+
+  if (!device.gatt) throw new Error("Perangkat printer tidak mendukung koneksi GATT");
   await device.gatt.connect();
   const ch = await pickWritableCharacteristic(device);
   state.device = device;

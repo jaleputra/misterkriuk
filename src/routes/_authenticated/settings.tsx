@@ -11,18 +11,20 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save, QrCode } from "lucide-react";
+import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save, QrCode, AlertTriangle, Info, CheckCircle2 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import jsQR from "jsqr";
 import { rupiah } from "@/lib/format";
 import {
   connectPrinterClient,
   disconnectPrinterClient,
+  getBluetoothDiagnosticClient,
   isBluetoothSupportedClient,
   isPrinterConnectedClient,
   subscribePrinterClient,
   testPrintClient,
 } from "@/lib/thermal-printer.actions";
+import { printReceiptPdfClient } from "@/lib/receipt-pdf.actions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   ssr: false,
@@ -136,14 +138,22 @@ function SettingsPage() {
 
   const [printerConnected, setPrinterConnected] = useState(false);
   const [printerBusy, setPrinterBusy] = useState(false);
+  const [btDiag, setBtDiag] = useState<{ supported: boolean; message: string }>({
+    supported: true,
+    message: "",
+  });
+
   useEffect(() => {
+    const diag = getBluetoothDiagnosticClient();
+    setBtDiag(diag);
     setPrinterConnected(isPrinterConnectedClient());
     return subscribePrinterClient(() => setPrinterConnected(isPrinterConnectedClient()));
   }, []);
 
   const handleConnectPrinter = async () => {
-    if (!isBluetoothSupportedClient()) {
-      toast.error("Browser tidak mendukung Web Bluetooth");
+    const diag = getBluetoothDiagnosticClient();
+    if (!diag.supported) {
+      toast.error(diag.message);
       return;
     }
     setPrinterBusy(true);
@@ -152,7 +162,7 @@ function SettingsPage() {
       setForm((f) => ({ ...f, printer_name: name }));
       toast.success(`Terhubung: ${name}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal terhubung");
+      toast.error(e instanceof Error ? e.message : "Gagal terhubung ke printer");
     } finally {
       setPrinterBusy(false);
     }
@@ -170,11 +180,40 @@ function SettingsPage() {
         shop_phone: form.shop_phone,
         paper_width: form.paper_width,
       });
-      toast.success("Test print terkirim");
+      toast.success("Test print terkirim ke printer Bluetooth");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal test print");
     } finally {
       setPrinterBusy(false);
+    }
+  };
+
+  const handleTestPrintSystem = () => {
+    try {
+      const sampleTx = {
+        id: "TEST-" + Math.floor(1000 + Math.random() * 9000),
+        created_at: new Date().toISOString(),
+        total: 35000,
+        discount_amount: 0,
+        payment_method: "cash",
+        cash_received: 50000,
+        change_amount: 15000,
+        buyer_name: "Pelanggan Test",
+        house_block: "A1",
+        items: [
+          { product_name: "Paket Ayam Geprek", price: 15000, quantity: 2, subtotal: 30000 },
+          { product_name: "Es Teh Manis", price: 5000, quantity: 1, subtotal: 5000 },
+        ],
+      };
+      printReceiptPdfClient(sampleTx as any, {
+        shop_name: form.shop_name || "Mr Kriuk Ami",
+        shop_address: form.shop_address,
+        shop_phone: form.shop_phone,
+        paper_width: form.paper_width,
+      });
+      toast.success("Membuka dialog cetak struk sistem...");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal membuka cetak sistem");
     }
   };
 
@@ -302,11 +341,37 @@ function SettingsPage() {
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Printer className="h-4 w-4" /> Printer Thermal
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Printer className="h-4 w-4" /> Printer Thermal
+              </CardTitle>
+              {btDiag.supported ? (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> Web Bluetooth Aktif
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Bluetooth Tidak Didukung
+                </span>
+              )}
+            </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
+            {!btDiag.supported && (
+              <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 p-3.5 text-xs text-amber-900 dark:text-amber-300 space-y-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-800 dark:text-amber-400">
+                  <Info className="h-4 w-4 shrink-0" />
+                  Info Kompatibilitas Browser
+                </div>
+                <p className="leading-relaxed">
+                  {btDiag.message || "Browser ini tidak mendukung Web Bluetooth."}
+                </p>
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
+                  💡 <strong>Solusi:</strong> Gunakan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong> di Laptop/PC/Android. Anda juga tetap bisa mencetak struk menggunakan opsi <strong>Cetak Struk Sistem (PDF)</strong>.
+                </p>
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Nama Printer</Label>
@@ -325,7 +390,7 @@ function SettingsPage() {
                 </Select>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap pt-1">
               {printerConnected ? (
                 <Button variant="destructive" onClick={handleDisconnectPrinter} disabled={printerBusy}>
                   Putuskan Printer
@@ -336,14 +401,17 @@ function SettingsPage() {
                 </Button>
               )}
               <Button variant="secondary" onClick={handleTestPrint} disabled={!printerConnected || printerBusy}>
-                Test Printer
+                Test Bluetooth (ESC/POS)
               </Button>
-              <span className={`text-xs px-2 py-1 rounded-md ${printerConnected ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+              <Button variant="outline" onClick={handleTestPrintSystem}>
+                Test Cetak Sistem (PDF)
+              </Button>
+              <span className={`text-xs px-2.5 py-1 rounded-md font-medium ${printerConnected ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
                 {printerConnected ? "Terhubung" : "Tidak terhubung"}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Aktifkan Bluetooth lalu sambungkan printer thermal. Saat checkout, tombol "Cetak" akan langsung mengirim struk ke printer.
+              Aktifkan Bluetooth di perangkat Anda dan printer, lalu klik "Sambungkan Printer Bluetooth". Saat transaksi kasir, struk akan otomatis langsung dicetak ke printer ini.
             </p>
           </CardContent>
         </Card>
@@ -371,8 +439,38 @@ function SettingsPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Printer className="h-4 w-4" /> Printer Thermal</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Printer className="h-4 w-4" /> Printer Thermal
+              </CardTitle>
+              {btDiag.supported ? (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> Web Bluetooth Aktif
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Bluetooth Tidak Didukung
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!btDiag.supported && (
+              <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 p-3.5 text-xs text-amber-900 dark:text-amber-300 space-y-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-800 dark:text-amber-400">
+                  <Info className="h-4 w-4 shrink-0" />
+                  Info Kompatibilitas Browser
+                </div>
+                <p className="leading-relaxed">
+                  {btDiag.message || "Browser ini tidak mendukung Web Bluetooth."}
+                </p>
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
+                  💡 <strong>Solusi:</strong> Gunakan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong> di Laptop/PC/Android. Anda juga tetap bisa mencetak struk menggunakan opsi <strong>Cetak Struk Sistem (PDF)</strong>.
+                </p>
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Nama Printer</Label><Input value={form.printer_name} onChange={(e) => setForm({ ...form, printer_name: e.target.value })} placeholder="Belum terhubung" /></div>
               <div className="space-y-1.5">
@@ -386,7 +484,7 @@ function SettingsPage() {
                 </Select>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap pt-1">
               {printerConnected ? (
                 <Button variant="destructive" onClick={handleDisconnectPrinter} disabled={printerBusy}>
                   Putuskan Printer
@@ -397,9 +495,12 @@ function SettingsPage() {
                 </Button>
               )}
               <Button variant="secondary" onClick={handleTestPrint} disabled={!printerConnected || printerBusy}>
-                Test Printer
+                Test Bluetooth (ESC/POS)
               </Button>
-              <span className={`text-xs px-2 py-1 rounded-md ${printerConnected ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+              <Button variant="outline" onClick={handleTestPrintSystem}>
+                Test Cetak Sistem (PDF)
+              </Button>
+              <span className={`text-xs px-2.5 py-1 rounded-md font-medium ${printerConnected ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
                 {printerConnected ? "Terhubung" : "Tidak terhubung"}
               </span>
             </div>
