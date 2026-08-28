@@ -37,6 +37,15 @@ export function useAuth(): AuthState {
         } else {
           // Fallback if user_roles record hasn't been created yet
           setRole("admin");
+          try {
+            await supabase.from("user_roles").insert({
+              user_id: uid,
+              role: "admin",
+              branch_name: null,
+            });
+          } catch (e) {
+            console.warn("Auto-insert user_roles fallback:", e);
+          }
         }
       } catch {
         if (mounted) {

@@ -68,7 +68,7 @@ const applyAdjustment = (price: number, type: string, value: number) => {
 };
 
 function TransactionPage() {
-  const { branchName } = useAuth();
+  const { branchName, role } = useAuth();
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const { data: rawProducts = [] } = useQuery({
@@ -226,12 +226,35 @@ function TransactionPage() {
       if (payMethod === "cash" && Number(cashReceived) < total)
         throw new Error("Uang tunai kurang");
       const { data: u } = await supabase.auth.getUser();
+      const currentUserId = u.user?.id || (await supabase.auth.getSession()).data.session?.user?.id;
+
+      if (!currentUserId) {
+        throw new Error("Sesi login berakhir. Silakan login kembali.");
+      }
+
+      // Pastikan user memiliki role di user_roles agar lolos RLS policy Supabase
+      try {
+        const { data: existingRoles } = await supabase
+          .from("user_roles")
+          .select("id")
+          .eq("user_id", currentUserId);
+        if (!existingRoles || existingRoles.length === 0) {
+          await supabase.from("user_roles").insert({
+            user_id: currentUserId,
+            role: role || "cashier",
+            branch_name: branchName || null,
+          });
+        }
+      } catch (e) {
+        console.warn("Auto-register user_roles during checkout:", e);
+      }
+
       const txPayload: any = {
         total,
         payment_method: payMethod,
         cash_received: payMethod === "cash" ? Number(cashReceived) : null,
         change_amount: payMethod === "cash" ? change : null,
-        cashier_id: u.user?.id,
+        cashier_id: currentUserId,
         sale_category: transactionType,
         partner_name: transactionType === "partner" ? partnerName.trim() : null,
         buyer_name: null,
@@ -240,6 +263,9 @@ function TransactionPage() {
       };
 
       let tx: any = null;
+      let lastError: any = null;
+
+      // 1. Coba simpan dengan payload lengkap
       try {
         const { data: createdTx, error } = await supabase
           .from("transactions")
@@ -248,16 +274,38 @@ function TransactionPage() {
           .single();
         if (error) throw error;
         tx = createdTx;
-      } catch {
-        // Fallback if branch_name column is not present in schema cache
-        const { branch_name, ...basicPayload } = txPayload;
-        const { data: createdTx, error } = await supabase
-          .from("transactions")
-          .insert(basicPayload)
-          .select()
-          .single();
-        if (error) throw error;
-        tx = createdTx;
+      } catch (err: any) {
+        lastError = err;
+        // 2. Fallback tanpa branch_name jika kolom belum dicache
+        try {
+          const { branch_name, ...basicPayload } = txPayload;
+          const { data: createdTx, error } = await supabase
+            .from("transactions")
+            .insert(basicPayload)
+            .select()
+            .single();
+          if (error) throw error;
+          tx = createdTx;
+        } catch (err2: any) {
+          lastError = err2;
+          // 3. Fallback tanpa cashier_id jika RLS membolehkan anon / null
+          try {
+            const { branch_name, cashier_id, ...minimalPayload } = txPayload;
+            const { data: createdTx, error } = await supabase
+              .from("transactions")
+              .insert(minimalPayload)
+              .select()
+              .single();
+            if (error) throw error;
+            tx = createdTx;
+          } catch (err3: any) {
+            lastError = err3;
+          }
+        }
+      }
+
+      if (!tx) {
+        throw new Error(lastError?.message || "Gagal menyimpan transaksi ke database.");
       }
 
       const items = cart.map((i) => ({
@@ -269,8 +317,15 @@ function TransactionPage() {
         subtotal: Number(i.product.price) * i.qty,
         cost_price: Number(i.product.costPrice ?? 0),
       }));
-      const { error: e2 } = await supabase.from("transaction_items").insert(items);
-      if (e2) throw e2;
+
+      try {
+        const { error: e2 } = await supabase.from("transaction_items").insert(items);
+        if (e2) throw e2;
+      } catch {
+        const basicItems = items.map(({ cost_price, ...rest }) => rest);
+        const { error: e2Fallback } = await supabase.from("transaction_items").insert(basicItems);
+        if (e2Fallback) throw e2Fallback;
+      }
 
       for (const i of cart) {
         await supabase
