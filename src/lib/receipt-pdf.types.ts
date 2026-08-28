@@ -17,4 +17,5 @@ export type ReceiptPdfSettings = {
   shop_name?: string | null;
   shop_address?: string | null;
   shop_phone?: string | null;
+  paper_width?: number | null;
 } | null;

@@ -23,8 +23,8 @@ export function BottomNav({ role }: { role: AppRole }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const visible = items.filter((i) => i.roles.includes(role));
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 pb-[env(safe-area-inset-bottom)]">
-      <div className="mx-auto max-w-5xl grid" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0,1fr))` }}>
+    <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/80 bg-card/90 backdrop-blur-lg supports-[backdrop-filter]:bg-card/85 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.03)]">
+      <div className="mx-auto max-w-4xl px-2 py-1.5 grid gap-1" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0,1fr))` }}>
         {visible.map((item) => {
           const active = pathname.startsWith(item.to) || (item.to === "/dashboard" && role === "cashier" && pathname.startsWith("/income-details"));
           const Icon = item.icon;
@@ -33,12 +33,14 @@ export function BottomNav({ role }: { role: AppRole }) {
               key={item.to}
               to={item.to === "/dashboard" && role === "cashier" ? "/income-details" : item.to}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors",
-                active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                "relative flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-medium transition-all duration-200",
+                active 
+                  ? "text-primary font-semibold bg-primary/10 shadow-xs" 
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
               )}
             >
-              <Icon className={cn("h-5 w-5", active && "scale-110")} />
-              <span>{item.label}</span>
+              <Icon className={cn("h-5 w-5 transition-transform duration-200", active && "scale-110 stroke-[2.25px]")} />
+              <span className="leading-tight truncate max-w-full">{item.label}</span>
             </Link>
           );
         })}
