@@ -3,7 +3,17 @@ import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
-export function AppHeader({ title, role, email }: { title: string; role: string; email?: string }) {
+export function AppHeader({
+  title,
+  role,
+  email,
+  branchName,
+}: {
+  title: string;
+  role: string;
+  email?: string;
+  branchName?: string | null;
+}) {
   const navigate = useNavigate();
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -38,12 +48,18 @@ export function AppHeader({ title, role, email }: { title: string; role: string;
             <span className="text-[11px] sm:text-xs font-semibold text-foreground truncate max-w-[110px] min-[400px]:max-w-[160px] sm:max-w-none">
               {email}
             </span>
-            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${
               isCashier 
                 ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20" 
                 : "bg-primary/10 text-primary border border-primary/20"
             }`}>
-              {role}
+              <span>{role}</span>
+              {branchName && (
+                <>
+                  <span className="opacity-40">•</span>
+                  <span className="truncate max-w-[90px] sm:max-w-[140px] lowercase capitalize">{branchName}</span>
+                </>
+              )}
             </span>
           </div>
 

@@ -8,12 +8,14 @@ export interface AuthState {
   session: Session | null;
   user: User | null;
   role: AppRole | null;
+  branchName: string | null;
   loading: boolean;
 }
 
 export function useAuth(): AuthState {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [branchName, setBranchName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,11 +25,13 @@ export function useAuth(): AuthState {
       try {
         const { data } = await supabase
           .from("user_roles")
-          .select("role")
+          .select("role, branch_name")
           .eq("user_id", uid)
           .order("role", { ascending: true });
         if (!mounted) return;
         const roles = (data ?? []).map((r) => r.role as AppRole);
+        const branch = (data ?? [])[0]?.branch_name ?? null;
+        setBranchName(branch);
         if (roles.length > 0) {
           setRole(roles.includes("admin") ? "admin" : roles[0]);
         } else {
@@ -35,7 +39,10 @@ export function useAuth(): AuthState {
           setRole("admin");
         }
       } catch {
-        if (mounted) setRole("admin");
+        if (mounted) {
+          setRole("admin");
+          setBranchName(null);
+        }
       }
     };
 
@@ -45,6 +52,7 @@ export function useAuth(): AuthState {
         setTimeout(() => loadRole(s.user.id), 0);
       } else {
         setRole(null);
+        setBranchName(null);
       }
     });
 
@@ -61,5 +69,5 @@ export function useAuth(): AuthState {
     };
   }, []);
 
-  return { session, user: session?.user ?? null, role, loading };
+  return { session, user: session?.user ?? null, role, branchName, loading };
 }

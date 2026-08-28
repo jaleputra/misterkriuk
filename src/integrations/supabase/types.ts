@@ -14,26 +14,65 @@ export type Database = {
   }
   public: {
     Tables: {
-      daily_reports: {
+      branches: {
         Row: {
           created_at: string
+          id: string
+          shop_name: string
+          branch_name: string
+          shop_address: string | null
+          shop_phone: string | null
+          whatsapp_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          shop_name?: string
+          branch_name: string
+          shop_address?: string | null
+          shop_phone?: string | null
+          whatsapp_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          shop_name?: string
+          branch_name?: string
+          shop_address?: string | null
+          shop_phone?: string | null
+          whatsapp_number?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      daily_reports: {
+        Row: {
+          branch_name: string | null
+          created_at: string
           created_by: string | null
+          id?: string
           initial_cash: number
           note: string | null
           report_date: string
           updated_at: string
         }
         Insert: {
+          branch_name?: string | null
           created_at?: string
           created_by?: string | null
+          id?: string
           initial_cash?: number
           note?: string | null
           report_date: string
           updated_at?: string
         }
         Update: {
+          branch_name?: string | null
           created_at?: string
           created_by?: string | null
+          id?: string
           initial_cash?: number
           note?: string | null
           report_date?: string
@@ -119,8 +158,11 @@ export type Database = {
       printer_settings: {
         Row: {
           id: number
+          branch_name: string | null
           paper_width: number | null
           printer_name: string | null
+          qris_image_url?: string | null
+          qris_payload?: string | null
           shop_address: string | null
           shop_name: string | null
           shop_phone: string | null
@@ -129,8 +171,11 @@ export type Database = {
         }
         Insert: {
           id?: number
+          branch_name?: string | null
           paper_width?: number | null
           printer_name?: string | null
+          qris_image_url?: string | null
+          qris_payload?: string | null
           shop_address?: string | null
           shop_name?: string | null
           shop_phone?: string | null
@@ -139,8 +184,11 @@ export type Database = {
         }
         Update: {
           id?: number
+          branch_name?: string | null
           paper_width?: number | null
           printer_name?: string | null
+          qris_image_url?: string | null
+          qris_payload?: string | null
           shop_address?: string | null
           shop_name?: string | null
           shop_phone?: string | null
@@ -205,6 +253,7 @@ export type Database = {
       }
       stock_entries: {
         Row: {
+          branch_name: string | null
           created_at: string
           created_by: string | null
           entry_type: string
@@ -215,6 +264,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          branch_name?: string | null
           created_at?: string
           created_by?: string | null
           entry_type?: string
@@ -225,6 +275,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          branch_name?: string | null
           created_at?: string
           created_by?: string | null
           entry_type?: string
@@ -337,6 +388,7 @@ export type Database = {
       }
       transactions: {
         Row: {
+          branch_name: string | null
           buyer_name: string | null
           cash_received: number | null
           cashier_id: string | null
@@ -350,6 +402,7 @@ export type Database = {
           total: number
         }
         Insert: {
+          branch_name?: string | null
           buyer_name?: string | null
           cash_received?: number | null
           cashier_id?: string | null
@@ -363,6 +416,7 @@ export type Database = {
           total: number
         }
         Update: {
+          branch_name?: string | null
           buyer_name?: string | null
           cash_received?: number | null
           cashier_id?: string | null
@@ -379,18 +433,21 @@ export type Database = {
       }
       user_roles: {
         Row: {
+          branch_name: string | null
           created_at: string
           id: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
+          branch_name?: string | null
           created_at?: string
           id?: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
+          branch_name?: string | null
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]

@@ -11,6 +11,7 @@ const CONTENT_WIDTH_MM = 72;
 const LEFT_MM = 4;
 
 function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
+  const branchLines = settings?.branch_name ? 1 : 0;
   const addressLines = settings?.shop_address
     ? Math.max(1, Math.ceil(settings.shop_address.length / 40))
     : 0;
@@ -33,6 +34,7 @@ function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) 
   // Add 16mm for the promo text block at the bottom
   return (
     54 +
+    branchLines * 4 +
     addressLines * 4 +
     phoneLines * 4 +
     partnerLines * 4 +
@@ -80,6 +82,7 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
   };
 
   centerText(settings?.shop_name ?? "Mr Kriuk Ami", 10, true);
+  if (settings?.branch_name) centerText(settings.branch_name, 8, false);
   if (settings?.shop_address) centerText(settings.shop_address);
   if (settings?.shop_phone) centerText(settings.shop_phone);
   divider();

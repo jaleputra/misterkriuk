@@ -38,7 +38,7 @@ import {
   ShoppingBag,
   Package,
   Users,
-
+  Store,
 } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
@@ -53,7 +53,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { role, branchName } = useAuth();
 
   useEffect(() => {
     if (role === "cashier") {
@@ -64,6 +64,10 @@ function Dashboard() {
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
   const customRange = !!(fromDate && toDate);
+
+  // Filter Cabang (Hanya untuk Admin)
+  const [selectedBranch, setSelectedBranch] = useState<string>("all");
+
   const [detailModal, setDetailModal] = useState<{
     open: boolean;
     title: string;
@@ -73,6 +77,43 @@ function Dashboard() {
     title: "",
     type: null,
   });
+
+  // Query branches from database / fallback
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        if (error) {
+          const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+          return localData ? JSON.parse(localData) : [];
+        }
+        return data ?? [];
+      } catch {
+        const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+        return localData ? JSON.parse(localData) : [];
+      }
+    },
+  });
+
+  // Query user roles to map cashier user_id to branch_name
+  const { data: userRoles = [] } = useQuery({
+    queryKey: ["user_roles_branch_map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
+      return data ?? [];
+    },
+  });
+
+  const cashierBranchMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    userRoles.forEach((ur: any) => {
+      if (ur.user_id && ur.branch_name) {
+        map[ur.user_id] = ur.branch_name;
+      }
+    });
+    return map;
+  }, [userRoles]);
 
   const { data } = useQuery({
     queryKey: ["dashboard", dateFilter, fromDate, toDate],
@@ -149,6 +190,40 @@ function Dashboard() {
     refetchInterval: 30000,
   });
 
+  // Available branches list for filter
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    branches.forEach((b: any) => {
+      if (b.branch_name?.trim()) set.add(b.branch_name.trim());
+    });
+    userRoles.forEach((ur: any) => {
+      if (ur.branch_name?.trim()) set.add(ur.branch_name.trim());
+    });
+    (data?.transactions ?? []).forEach((t: any) => {
+      if (t.branch_name?.trim()) set.add(t.branch_name.trim());
+    });
+    (data?.stockEntries ?? []).forEach((e: any) => {
+      if (e.branch_name?.trim()) set.add(e.branch_name.trim());
+    });
+    return Array.from(set);
+  }, [branches, userRoles, data?.transactions, data?.stockEntries]);
+
+  const branchMatch = (b1?: string | null, b2?: string | null) => {
+    if (!b1 || !b2) return false;
+    return b1.trim().toLowerCase() === b2.trim().toLowerCase();
+  };
+
+  const getTxBranch = (t: any) => {
+    if (t.branch_name?.trim()) return t.branch_name.trim();
+    if (t.cashier_id && cashierBranchMap[t.cashier_id]) return cashierBranchMap[t.cashier_id];
+    return null;
+  };
+
+  const getEntryBranch = (e: any) => {
+    if (e.branch_name?.trim()) return e.branch_name.trim();
+    if (e.created_by && cashierBranchMap[e.created_by]) return cashierBranchMap[e.created_by];
+    return null;
+  };
 
   const [deletedTxIds, setDeletedTxIds] = useState<string[]>([]);
   const [localEditedTxs, setLocalEditedTxs] = useState<Record<string, any>>({});
@@ -157,13 +232,18 @@ function Dashboard() {
     const rawTxs = data?.transactions ?? [];
     return rawTxs
       .filter((t) => !deletedTxIds.includes(t.id))
+      .filter((t) => {
+        if (role !== "admin" || selectedBranch === "all") return true;
+        const b = getTxBranch(t);
+        return branchMatch(b, selectedBranch);
+      })
       .map((t) => {
         if (localEditedTxs[t.id]) {
           return { ...t, ...localEditedTxs[t.id] };
         }
         return t;
       });
-  }, [data?.transactions, deletedTxIds, localEditedTxs]);
+  }, [data?.transactions, deletedTxIds, localEditedTxs, role, selectedBranch, cashierBranchMap]);
 
   const items = data?.items ?? [];
   const products = data?.products ?? [];
@@ -381,10 +461,24 @@ function Dashboard() {
   const partnerCashRevenue = useMemo(() => partnerTxs.filter((t) => t.payment_method === "cash").reduce((s, t) => s + Number(t.total), 0), [partnerTxs]);
   const partnerQrisRevenue = useMemo(() => partnerTxs.filter((t) => t.payment_method === "qris").reduce((s, t) => s + Number(t.total), 0), [partnerTxs]);
 
+  // Filter stock entries based on selectedBranch
+  const filteredStockEntries = useMemo(() => {
+    const raw = stockEntries;
+    if (role !== "admin" || selectedBranch === "all") return raw;
+    return raw.filter((e: any) => branchMatch(getEntryBranch(e), selectedBranch));
+  }, [stockEntries, role, selectedBranch, cashierBranchMap]);
+
+  // Filter all restock entries based on selectedBranch
+  const filteredAllRestockEntries = useMemo(() => {
+    const raw = allRestockEntries;
+    if (role !== "admin" || selectedBranch === "all") return raw;
+    return raw.filter((e: any) => branchMatch(getEntryBranch(e), selectedBranch));
+  }, [allRestockEntries, role, selectedBranch, cashierBranchMap]);
+
   // Pengeluaran (tanpa restok — restok dihitung terpisah secara keseluruhan)
   const expenseEntries = useMemo(
-    () => stockEntries.filter((e: any) => (e.entry_type ?? "expense") !== "restock"),
-    [stockEntries],
+    () => filteredStockEntries.filter((e: any) => (e.entry_type ?? "expense") !== "restock"),
+    [filteredStockEntries],
   );
 
   const totalExpenditure = useMemo(() => {
@@ -415,7 +509,7 @@ function Dashboard() {
   // Restok — total keseluruhan (semua tanggal), mengurangi pendapatan bersih keseluruhan
   const restockTotal = useMemo(
     () =>
-      (allRestockEntries as any[]).reduce(
+      (filteredAllRestockEntries as any[]).reduce(
         (s, e) =>
           s +
           Number(e.shipping_cost ?? 0) +
@@ -425,7 +519,7 @@ function Dashboard() {
           ),
         0,
       ),
-    [allRestockEntries],
+    [filteredAllRestockEntries],
   );
 
   // Pendapatan Bersih (Cash + QRIS net) dikurangi restok keseluruhan
@@ -568,23 +662,55 @@ function Dashboard() {
   return (
     <div className="space-y-4">
       {/* Header and Filter */}
-      <div className="flex justify-between items-center flex-wrap gap-2">
-        <h1 className="text-xl font-bold">Dashboard Ringkasan</h1>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Filter Waktu:</span>
-          <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Hari Ini</SelectItem>
-              <SelectItem value="7">7 Hari Terakhir</SelectItem>
-              <SelectItem value="14">14 Hari Terakhir</SelectItem>
-              <SelectItem value="30">30 Hari Terakhir</SelectItem>
-              <SelectItem value="month">Bulan Ini</SelectItem>
-              <SelectItem value="all">Semua Waktu</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="flex justify-between items-center flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Dashboard Ringkasan</h1>
+          {role === "admin" && selectedBranch !== "all" && (
+            <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
+              <Store className="h-3.5 w-3.5" />
+              Menampilkan cabang: <span className="font-semibold">{selectedBranch}</span>
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Branch Filter (Only for Admin) */}
+          {role === "admin" && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</span>
+              <Select value={selectedBranch} onValueChange={(v) => setSelectedBranch(v)}>
+                <SelectTrigger className="w-[170px] h-9">
+                  <SelectValue placeholder="Pilih Cabang" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="font-medium">Semua Cabang</span>
+                  </SelectItem>
+                  {branchOptions.map((b) => (
+                    <SelectItem key={b} value={b}>
+                      {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Filter Waktu:</span>
+            <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
+              <SelectTrigger className="w-[150px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Hari Ini</SelectItem>
+                <SelectItem value="7">7 Hari Terakhir</SelectItem>
+                <SelectItem value="14">14 Hari Terakhir</SelectItem>
+                <SelectItem value="30">30 Hari Terakhir</SelectItem>
+                <SelectItem value="month">Bulan Ini</SelectItem>
+                <SelectItem value="all">Semua Waktu</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -779,9 +905,14 @@ function Dashboard() {
                     className="flex justify-between items-center border-b pb-2 text-sm cursor-pointer hover:bg-muted/50 p-2 rounded transition active:scale-[0.98]"
                   >
                     <div>
-                      <div className="font-semibold">
-                        No: {t.id.slice(0, 8).toUpperCase()}
+                      <div className="font-semibold flex items-center gap-1.5 flex-wrap">
+                        <span>No: {t.id.slice(0, 8).toUpperCase()}</span>
                         {t.partner_name ? ` · Partner: ${t.partner_name}` : t.buyer_name ? ` · ${t.buyer_name}` : ""}
+                        {getTxBranch(t) && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-normal">
+                            {getTxBranch(t)}
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {new Date(t.created_at).toLocaleString("id-ID")}

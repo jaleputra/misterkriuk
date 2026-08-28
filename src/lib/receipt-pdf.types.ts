@@ -15,6 +15,7 @@ export type ReceiptPdfTransaction = {
 
 export type ReceiptPdfSettings = {
   shop_name?: string | null;
+  branch_name?: string | null;
   shop_address?: string | null;
   shop_phone?: string | null;
   paper_width?: number | null;

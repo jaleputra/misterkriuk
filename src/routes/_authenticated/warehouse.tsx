@@ -27,11 +27,28 @@ export const Route = createFileRoute("/_authenticated/warehouse")({
 
 function WarehousePage() {
   const qc = useQueryClient();
-  const { role } = useAuth();
+  const { role, branchName } = useAuth();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("all");
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
   const customRange = !!(fromDate && toDate);
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        if (error) {
+          const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+          return localData ? JSON.parse(localData) : [];
+        }
+        return data ?? [];
+      } catch {
+        const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+        return localData ? JSON.parse(localData) : [];
+      }
+    },
+  });
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
@@ -78,6 +95,7 @@ function WarehousePage() {
   const [shippingCost, setShippingCost] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris">("cash");
   const [entryType, setEntryType] = useState<"expense" | "restock">("expense");
+  const [selectedBranch, setSelectedBranch] = useState<string>("");
 
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
@@ -93,6 +111,7 @@ function WarehousePage() {
         .join(" ");
       const hay = [
         names,
+        entry.branch_name,
         entry.restock_date,
         new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
         String(entry.shipping_cost ?? ""),
@@ -108,7 +127,7 @@ function WarehousePage() {
     setShippingCost("");
     setPaymentMethod("cash");
     setEntryType("expense");
-
+    setSelectedBranch("");
     setLines([emptyLine()]);
     setEditingEntry(null);
   };
@@ -125,6 +144,12 @@ function WarehousePage() {
       if (validLines.length === 0) throw new Error("Tambahkan minimal satu produk");
       if (new Set(validLines.map((line) => line.product_name.trim().toLowerCase())).size !== validLines.length)
         throw new Error("Produk yang sama tidak boleh dimasukkan dua kali");
+
+      const assignedBranch = role === "cashier" ? (branchName || null) : (selectedBranch.trim() || null);
+      if (role === "admin" && !selectedBranch.trim()) {
+        throw new Error("Admin wajib memilih cabang untuk pengeluaran ini!");
+      }
+
       const { data: u } = await supabase.auth.getUser();
 
       // Cari atau buat produk secara dinamis menggunakan kategori 'customer' dengan prefix '[GUDANG] '
@@ -164,11 +189,29 @@ function WarehousePage() {
       }
 
       if (editingEntry) {
-        const { error: entryError } = await supabase
-          .from("stock_entries")
-          .update({ restock_date: restockDate, shipping_cost: Number(shippingCost || 0), payment_method: paymentMethod, entry_type: entryType })
-          .eq("id", editingEntry);
-        if (entryError) throw entryError;
+        const updatePayload: any = {
+          restock_date: restockDate,
+          shipping_cost: Number(shippingCost || 0),
+          payment_method: paymentMethod,
+          entry_type: entryType,
+          branch_name: assignedBranch,
+        };
+
+        try {
+          const { error: entryError } = await supabase
+            .from("stock_entries")
+            .update(updatePayload)
+            .eq("id", editingEntry);
+          if (entryError) throw entryError;
+        } catch {
+          const { branch_name, ...basicPayload } = updatePayload;
+          const { error: entryError } = await supabase
+            .from("stock_entries")
+            .update(basicPayload)
+            .eq("id", editingEntry);
+          if (entryError) throw entryError;
+        }
+
         const { error: deleteError } = await supabase
           .from("stock_movements")
           .delete()
@@ -184,19 +227,34 @@ function WarehousePage() {
         return;
       }
 
-      const { data: entry, error: entryError } = await supabase
-        .from("stock_entries")
-        .insert({
-          restock_date: restockDate,
-          shipping_cost: Number(shippingCost || 0),
-          payment_method: paymentMethod,
-          entry_type: entryType,
+      const insertPayload: any = {
+        restock_date: restockDate,
+        shipping_cost: Number(shippingCost || 0),
+        payment_method: paymentMethod,
+        entry_type: entryType,
+        created_by: u.user?.id,
+        branch_name: assignedBranch,
+      };
 
-          created_by: u.user?.id,
-        })
-        .select("id")
-        .single();
-      if (entryError) throw entryError;
+      let entry: any = null;
+      try {
+        const { data: createdEntry, error: entryError } = await supabase
+          .from("stock_entries")
+          .insert(insertPayload)
+          .select("id")
+          .single();
+        if (entryError) throw entryError;
+        entry = createdEntry;
+      } catch {
+        const { branch_name, ...basicPayload } = insertPayload;
+        const { data: createdEntry, error: entryError } = await supabase
+          .from("stock_entries")
+          .insert(basicPayload)
+          .select("id")
+          .single();
+        if (entryError) throw entryError;
+        entry = createdEntry;
+      }
 
       const { error: lineError } = await supabase.from("stock_movements").insert(
         resolvedMovements.map((rm) => ({
@@ -235,6 +293,7 @@ function WarehousePage() {
     setShippingCost(String(entry.shipping_cost));
     setPaymentMethod((entry.payment_method as "cash" | "qris") ?? "cash");
     setEntryType((entry.entry_type as "expense" | "restock") ?? "expense");
+    setSelectedBranch(entry.branch_name || "");
 
     setLines(
       entry.stock_movements.map((movement: any) => ({
@@ -272,6 +331,38 @@ function WarehousePage() {
               add.mutate();
             }}
           >
+            {/* Pilihan Cabang */}
+            <div className="space-y-1.5">
+              <Label>
+                Cabang {role === "admin" && <span className="text-destructive">*</span>}
+              </Label>
+              {role === "admin" ? (
+                <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="-- Pilih Cabang Pengeluaran --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b: any) => (
+                      <SelectItem key={b.id || b.branch_name} value={b.branch_name}>
+                        {b.branch_name} {b.shop_name ? `(${b.shop_name})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={branchName || "Cabang Utama"}
+                  disabled
+                  className="bg-muted text-muted-foreground font-medium"
+                />
+              )}
+              {role === "admin" && !selectedBranch && (
+                <p className="text-[11px] text-muted-foreground">
+                  Sebagai Admin, Anda harus menentukan cabang mana yang mengeluarkan biaya ini.
+                </p>
+              )}
+            </div>
+
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Tanggal Restock</Label>
@@ -317,7 +408,6 @@ function WarehousePage() {
               </p>
             </div>
             <div className="space-y-1.5">
-
               <Label>Metode Pembayaran</Label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
@@ -522,6 +612,11 @@ function WarehousePage() {
                   >
                     {(entry.entry_type ?? "expense") === "restock" ? "Restok" : "Pengeluaran"}
                   </span>
+                  {entry.branch_name && (
+                    <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                      {entry.branch_name}
+                    </span>
+                  )}
                   <span>
                     {entry.stock_movements.length} produk ·{" "}
                     {entry.stock_movements.reduce(

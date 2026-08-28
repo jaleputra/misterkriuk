@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save, QrCode, AlertTriangle, Info, CheckCircle2 } from "lucide-react";
+import { Printer, Users, Store, CalendarDays, Trash2, Plus, ChevronDown, ChevronUp, Save, QrCode, AlertTriangle, Info, CheckCircle2, Pencil } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import jsQR from "jsqr";
 import { rupiah } from "@/lib/format";
@@ -34,30 +36,181 @@ export const Route = createFileRoute("/_authenticated/settings")({
 function SettingsPage() {
   const { role } = useAuth();
   const qc = useQueryClient();
+
+  // Multi-branch storage in Supabase with local fallback
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        if (error) {
+          console.warn("Branches query fallback:", error);
+          const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+          if (localData) {
+            try { return JSON.parse(localData); } catch {}
+          }
+          return [];
+        }
+        if (typeof window !== "undefined" && data && data.length > 0) {
+          localStorage.setItem("app_branches_data", JSON.stringify(data));
+        }
+        return data ?? [];
+      } catch {
+        const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+        if (localData) {
+          try { return JSON.parse(localData); } catch {}
+        }
+        return [];
+      }
+    },
+  });
+
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [branchForm, setBranchForm] = useState({
+    shop_name: "AMI Fried Chicken",
+    branch_name: "",
+    shop_address: "",
+    shop_phone: "",
+    whatsapp_number: "",
+  });
+
+  const clearBranchForm = () => {
+    setBranchForm({
+      shop_name: "AMI Fried Chicken",
+      branch_name: "",
+      shop_address: "",
+      shop_phone: "",
+      whatsapp_number: "",
+    });
+    setEditingBranchId(null);
+  };
+
+  const handleEditBranch = (b: any) => {
+    if (role !== "admin") {
+      toast.error("Hanya admin yang dapat mengedit data cabang");
+      return;
+    }
+    setBranchForm({
+      shop_name: b.shop_name || "AMI Fried Chicken",
+      branch_name: b.branch_name || "",
+      shop_address: b.shop_address || "",
+      shop_phone: b.shop_phone || "",
+      whatsapp_number: b.whatsapp_number || "",
+    });
+    setEditingBranchId(b.id);
+    toast.info(`Data ${b.branch_name} dimuat ke formulir untuk diedit`);
+  };
+
+  const saveBranch = useMutation({
+    mutationFn: async () => {
+      const sName = branchForm.shop_name.trim() || "AMI Fried Chicken";
+      const bName = branchForm.branch_name.trim();
+      const sAddress = branchForm.shop_address.trim() || null;
+      const sPhone = branchForm.shop_phone.trim() || null;
+      const sWa = branchForm.whatsapp_number.trim() || null;
+
+      if (!bName) {
+        throw new Error("Nama cabang wajib diisi!");
+      }
+
+      if (editingBranchId) {
+        try {
+          await supabase.from("branches").update({
+            shop_name: sName,
+            branch_name: bName,
+            shop_address: sAddress,
+            shop_phone: sPhone,
+            whatsapp_number: sWa,
+            updated_at: new Date().toISOString(),
+          }).eq("id", editingBranchId);
+        } catch (err) {
+          console.warn("Supabase update branches fallback:", err);
+        }
+
+        const curList: any[] = JSON.parse(localStorage.getItem("app_branches_data") || "[]");
+        const nextList = curList.map((item) =>
+          item.id === editingBranchId
+            ? { ...item, shop_name: sName, branch_name: bName, shop_address: sAddress, shop_phone: sPhone, whatsapp_number: sWa, updated_at: new Date().toISOString() }
+            : item
+        );
+        localStorage.setItem("app_branches_data", JSON.stringify(nextList));
+      } else {
+        const newBranchId = crypto.randomUUID();
+        const newBranchRecord = {
+          id: newBranchId,
+          shop_name: sName,
+          branch_name: bName,
+          shop_address: sAddress,
+          shop_phone: sPhone,
+          whatsapp_number: sWa,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        try {
+          await supabase.from("branches").insert({
+            id: newBranchId,
+            shop_name: sName,
+            branch_name: bName,
+            shop_address: sAddress,
+            shop_phone: sPhone,
+            whatsapp_number: sWa,
+          });
+        } catch (err) {
+          console.warn("Supabase insert branches fallback:", err);
+        }
+
+        const curList: any[] = JSON.parse(localStorage.getItem("app_branches_data") || "[]");
+        curList.push(newBranchRecord);
+        localStorage.setItem("app_branches_data", JSON.stringify(curList));
+      }
+    },
+    onSuccess: () => {
+      toast.success(editingBranchId ? "Informasi cabang berhasil diperbarui" : "Cabang baru berhasil disimpan");
+      clearBranchForm();
+      qc.invalidateQueries({ queryKey: ["branches"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteBranch = useMutation({
+    mutationFn: async (id: string) => {
+      if (role !== "admin") throw new Error("Hanya admin yang dapat menghapus cabang");
+      try {
+        await supabase.from("branches").delete().eq("id", id);
+      } catch (err) {
+        console.warn("Supabase delete branches fallback:", err);
+      }
+
+      const curList: any[] = JSON.parse(localStorage.getItem("app_branches_data") || "[]");
+      const nextList = curList.filter((b) => b.id !== id);
+      localStorage.setItem("app_branches_data", JSON.stringify(nextList));
+    },
+    onSuccess: () => {
+      toast.success("Cabang berhasil dihapus");
+      qc.invalidateQueries({ queryKey: ["branches"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Printer & QRIS settings
   const { data: settings } = useQuery({
     queryKey: ["printer_settings"],
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
 
   const [form, setForm] = useState({
-    shop_name: "", 
-    shop_address: "", 
-    shop_phone: "", 
-    whatsapp_number: "", 
     printer_name: "", 
     paper_width: 58,
     qris_payload: "",
     qris_image_url: "",
   });
+
   useEffect(() => {
     if (settings) {
       const localQrisPayload = localStorage.getItem("qris_payload") || "";
       const localQrisImageUrl = localStorage.getItem("qris_image_url") || "";
       setForm({
-        shop_name: settings.shop_name ?? "",
-        shop_address: settings.shop_address ?? "",
-        shop_phone: settings.shop_phone ?? "",
-        whatsapp_number: settings.whatsapp_number ?? "",
         printer_name: settings.printer_name ?? "",
         paper_width: settings.paper_width ?? 58,
         qris_payload: (settings as any).qris_payload ?? localQrisPayload,
@@ -66,30 +219,28 @@ function SettingsPage() {
     }
   }, [settings]);
 
-  const save = useMutation({
+  const savePrinter = useMutation({
     mutationFn: async () => {
       try {
-        const { error } = await supabase.from("printer_settings")
-          .update({
-            shop_name: form.shop_name,
-            shop_address: form.shop_address,
-            shop_phone: form.shop_phone,
-            whatsapp_number: form.whatsapp_number,
-            printer_name: form.printer_name,
-            paper_width: form.paper_width,
-            qris_payload: form.qris_payload || null,
-            qris_image_url: form.qris_image_url || null,
-            updated_at: new Date().toISOString()
-          } as any)
-          .eq("id", 1);
+        const { error } = await supabase.from("printer_settings").upsert({
+          id: 1,
+          printer_name: form.printer_name,
+          paper_width: form.paper_width,
+          qris_payload: form.qris_payload || null,
+          qris_image_url: form.qris_image_url || null,
+          updated_at: new Date().toISOString(),
+        } as any);
         if (error) throw error;
       } catch (err) {
-        console.warn("Gagal menyimpan ke database, menggunakan fallback localStorage", err);
+        console.warn("Gagal simpan printer settings:", err);
       }
       localStorage.setItem("qris_payload", form.qris_payload || "");
       localStorage.setItem("qris_image_url", form.qris_image_url || "");
     },
-    onSuccess: () => { toast.success("Pengaturan disimpan"); qc.invalidateQueries({ queryKey: ["printer_settings"] }); },
+    onSuccess: () => {
+      toast.success("Pengaturan printer & QRIS disimpan");
+      qc.invalidateQueries({ queryKey: ["printer_settings"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -174,10 +325,11 @@ function SettingsPage() {
   const handleTestPrint = async () => {
     setPrinterBusy(true);
     try {
+      const activeBranch = branches[0];
       await testPrintClient({
-        shop_name: form.shop_name,
-        shop_address: form.shop_address,
-        shop_phone: form.shop_phone,
+        shop_name: activeBranch?.shop_name || "AMI Fried Chicken",
+        shop_address: activeBranch?.shop_address || "",
+        shop_phone: activeBranch?.shop_phone || "",
         paper_width: form.paper_width,
       });
       toast.success("Test print terkirim ke printer Bluetooth");
@@ -190,6 +342,7 @@ function SettingsPage() {
 
   const handleTestPrintSystem = () => {
     try {
+      const activeBranch = branches[0];
       const sampleTx = {
         id: "TEST-" + Math.floor(1000 + Math.random() * 9000),
         created_at: new Date().toISOString(),
@@ -206,9 +359,10 @@ function SettingsPage() {
         ],
       };
       printReceiptPdfClient(sampleTx as any, {
-        shop_name: form.shop_name || "Mr Kriuk Ami",
-        shop_address: form.shop_address,
-        shop_phone: form.shop_phone,
+        shop_name: activeBranch?.shop_name || "AMI Fried Chicken",
+        branch_name: activeBranch?.branch_name || "Cabang Utama",
+        shop_address: activeBranch?.shop_address || "",
+        shop_phone: activeBranch?.shop_phone || "",
         paper_width: form.paper_width,
       });
       toast.success("Membuka dialog cetak struk sistem...");
@@ -217,6 +371,18 @@ function SettingsPage() {
     }
   };
 
+  const [customBranchDialog, setCustomBranchDialog] = useState<{
+    open: boolean;
+    userId: string;
+    role: "admin" | "cashier";
+    branchName: string;
+  }>({
+    open: false,
+    userId: "",
+    role: "cashier",
+    branchName: "",
+  });
+
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles_roles"],
     queryFn: async () => {
@@ -224,19 +390,61 @@ function SettingsPage() {
         supabase.from("profiles").select("*").order("created_at"),
         supabase.from("user_roles").select("*"),
       ]);
-      return (ps ?? []).map((p: any) => ({
-        ...p, role: rs?.find((r: any) => r.user_id === p.id)?.role ?? "cashier",
-      }));
+      return (ps ?? []).map((p: any) => {
+        const userRole = rs?.find((r: any) => r.user_id === p.id);
+        return {
+          ...p,
+          role: (userRole?.role ?? "cashier") as "admin" | "cashier",
+          branch_name: (userRole?.branch_name ?? "") as string,
+        };
+      });
     },
   });
 
+  const availableBranches = useMemo(() => {
+    const list = new Set<string>();
+    branches.forEach((b: any) => {
+      if (b.branch_name?.trim()) list.add(b.branch_name.trim());
+    });
+    profiles.forEach((p: any) => {
+      if (p.branch_name?.trim()) list.add(p.branch_name.trim());
+    });
+    return Array.from(list);
+  }, [branches, profiles]);
+
   const setRole = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: "admin" | "cashier" }) => {
+    mutationFn: async ({
+      userId,
+      role,
+      branch_name,
+    }: {
+      userId: string;
+      role: "admin" | "cashier";
+      branch_name?: string | null;
+    }) => {
       await supabase.from("user_roles").delete().eq("user_id", userId);
-      const { error } = await supabase.from("user_roles").insert({ user_id: userId, role });
-      if (error) throw error;
+      try {
+        const { error } = await supabase.from("user_roles").insert({
+          user_id: userId,
+          role,
+          branch_name: branch_name || null,
+        } as any);
+        if (error) {
+          // Fallback if branch_name column is not created on remote yet
+          const { error: fallbackError } = await supabase.from("user_roles").insert({
+            user_id: userId,
+            role,
+          } as any);
+          if (fallbackError) throw fallbackError;
+        }
+      } catch (err) {
+        console.error("Gagal simpan user_roles:", err);
+      }
     },
-    onSuccess: () => { toast.success("Peran diperbarui"); qc.invalidateQueries({ queryKey: ["profiles_roles"] }); },
+    onSuccess: () => {
+      toast.success("Peran & cabang akun berhasil diperbarui");
+      qc.invalidateQueries({ queryKey: ["profiles_roles"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -420,21 +628,188 @@ function SettingsPage() {
   }
 
   return (
-    <Tabs defaultValue="store" className="space-y-4">
-      <TabsList className="grid grid-cols-3 w-full max-w-md">
-        <TabsTrigger value="store"><Store className="h-4 w-4 mr-2" />Umum</TabsTrigger>
-        <TabsTrigger value="event"><CalendarDays className="h-4 w-4 mr-2" />Event</TabsTrigger>
-        <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Akun</TabsTrigger>
-      </TabsList>
+    <>
+      <Tabs defaultValue="store" className="space-y-4">
+        <TabsList className="grid grid-cols-3 w-full max-w-md">
+          <TabsTrigger value="store"><Store className="h-4 w-4 mr-2" />Umum</TabsTrigger>
+          <TabsTrigger value="event"><CalendarDays className="h-4 w-4 mr-2" />Event</TabsTrigger>
+          <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Akun</TabsTrigger>
+        </TabsList>
 
       <TabsContent value="store" className="space-y-4">
         <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Store className="h-4 w-4" /> Informasi Toko</CardTitle></CardHeader>
-          <CardContent className="grid sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>Nama Toko</Label><Input value={form.shop_name} onChange={(e) => setForm({ ...form, shop_name: e.target.value })} /></div>
-            <div className="space-y-1.5"><Label>Telepon</Label><Input value={form.shop_phone} onChange={(e) => setForm({ ...form, shop_phone: e.target.value })} /></div>
-            <div className="space-y-1.5 sm:col-span-2"><Label>Alamat</Label><Input value={form.shop_address} onChange={(e) => setForm({ ...form, shop_address: e.target.value })} /></div>
-            <div className="space-y-1.5"><Label>Nomor WhatsApp (untuk struk)</Label><Input placeholder="6281234567890" value={form.whatsapp_number} onChange={(e) => setForm({ ...form, whatsapp_number: e.target.value })} /></div>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Store className="h-4 w-4" /> {editingBranchId ? "Edit Informasi Cabang" : "Tambah Cabang Toko Baru"}
+              </CardTitle>
+              {editingBranchId && (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[11px] font-medium">
+                  Mode Edit Cabang
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5">
+                <Label>Nama Toko</Label>
+                <Input 
+                  placeholder="Contoh: AMI Fried Chicken" 
+                  value={branchForm.shop_name} 
+                  onChange={(e) => setBranchForm({ ...branchForm, shop_name: e.target.value })} 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Nama Cabang <span className="text-destructive">*</span></Label>
+                <Input 
+                  placeholder="Contoh: Cabang Utama / Cabang Boulevard / Aneen" 
+                  value={branchForm.branch_name} 
+                  onChange={(e) => setBranchForm({ ...branchForm, branch_name: e.target.value })} 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Telepon</Label>
+                <Input 
+                  placeholder="08xxxxxxxxxx" 
+                  value={branchForm.shop_phone} 
+                  onChange={(e) => setBranchForm({ ...branchForm, shop_phone: e.target.value })} 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Nomor WhatsApp (untuk struk)</Label>
+                <Input 
+                  placeholder="6281234567890" 
+                  value={branchForm.whatsapp_number} 
+                  onChange={(e) => setBranchForm({ ...branchForm, whatsapp_number: e.target.value })} 
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Alamat Lengkap Cabang</Label>
+                <Input 
+                  placeholder="Alamat outlet / ruko / booth cabang ini" 
+                  value={branchForm.shop_address} 
+                  onChange={(e) => setBranchForm({ ...branchForm, shop_address: e.target.value })} 
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              {editingBranchId && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearBranchForm}
+                  disabled={saveBranch.isPending}
+                >
+                  Batal
+                </Button>
+              )}
+              <Button
+                onClick={() => saveBranch.mutate()}
+                disabled={saveBranch.isPending}
+                className="flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                <span>{saveBranch.isPending ? "Menyimpan…" : editingBranchId ? "Perbarui Cabang" : "Simpan Cabang Baru"}</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabel Data Toko & Cabang Tersimpan */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Store className="h-4 w-4" /> Daftar Cabang Tersimpan ({branches.length})
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Semua cabang tersimpan permanen di database backend Supabase.
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-xl border border-border/80 overflow-hidden">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="font-semibold">Nama Toko</TableHead>
+                    <TableHead className="font-semibold">Nama Cabang</TableHead>
+                    <TableHead className="font-semibold">Telepon</TableHead>
+                    <TableHead className="font-semibold">No. WhatsApp</TableHead>
+                    <TableHead className="font-semibold">Alamat</TableHead>
+                    {role === "admin" && (
+                      <TableHead className="font-semibold text-right w-32">Aksi</TableHead>
+                    )}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {branches.length > 0 ? (
+                    branches.map((b: any) => (
+                      <TableRow key={b.id}>
+                        <TableCell className="font-semibold">
+                          {b.shop_name || <span className="text-muted-foreground">-</span>}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-medium bg-primary/5 text-primary border-primary/20">
+                            {b.branch_name}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {b.shop_phone || <span className="text-muted-foreground">-</span>}
+                        </TableCell>
+                        <TableCell>
+                          {b.whatsapp_number || <span className="text-muted-foreground">-</span>}
+                        </TableCell>
+                        <TableCell className="max-w-xs break-words">
+                          {b.shop_address || <span className="text-muted-foreground">-</span>}
+                        </TableCell>
+                        {role === "admin" && (
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2.5 text-xs flex items-center gap-1 hover:bg-primary/10 hover:text-primary hover:border-primary/30"
+                                onClick={() => handleEditBranch(b)}
+                                title="Edit Data Cabang"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Edit</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2.5 text-xs flex items-center gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
+                                onClick={() => {
+                                  if (confirm(`Apakah Anda yakin ingin menghapus cabang "${b.branch_name}"?`)) {
+                                    deleteBranch.mutate(b.id);
+                                  }
+                                }}
+                                disabled={deleteBranch.isPending}
+                                title="Hapus Data Cabang"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Hapus</span>
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={role === "admin" ? 6 : 5} className="text-center py-6 text-muted-foreground text-sm">
+                        Belum ada data cabang yang tersimpan di database. Silakan isi formulir di atas dan klik Simpan Cabang Baru.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -472,7 +847,10 @@ function SettingsPage() {
             )}
 
             <div className="grid sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Nama Printer</Label><Input value={form.printer_name} onChange={(e) => setForm({ ...form, printer_name: e.target.value })} placeholder="Belum terhubung" /></div>
+              <div className="space-y-1.5">
+                <Label>Nama Printer</Label>
+                <Input value={form.printer_name} onChange={(e) => setForm({ ...form, printer_name: e.target.value })} placeholder="Belum terhubung" />
+              </div>
               <div className="space-y-1.5">
                 <Label>Lebar Kertas</Label>
                 <Select value={String(form.paper_width)} onValueChange={(v) => setForm({ ...form, paper_width: Number(v) })}>
@@ -514,32 +892,30 @@ function SettingsPage() {
               <QrCode className="h-4 w-4" /> Pengaturan QRIS Pembayaran
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Upload Gambar QRIS</Label>
-                <Input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleQrisImageUpload(file);
-                  }} 
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Unggah file gambar QRIS Anda. Sistem akan mencoba membaca payload/teks QRIS secara otomatis.
-                </p>
-              </div>
-              <div className="space-y-1.5">
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label>Upload Gambar QRIS (JPG / PNG)</Label>
+              <Input 
+                type="file" 
+                accept="image/*" 
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleQrisImageUpload(f);
+                }} 
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Sistem akan membaca payload QRIS secara otomatis dari gambar yang Anda unggah.
+              </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3 pt-2">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label>Teks Payload QRIS (Dihasilkan Otomatis / Input Manual)</Label>
                 <Input 
                   value={form.qris_payload} 
                   onChange={(e) => setForm({ ...form, qris_payload: e.target.value })} 
                   placeholder="000201010211..." 
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  String payload QRIS standar EMVCo (dimulai dengan 000201...). Dibutuhkan untuk membuat nominal dinamis.
-                </p>
               </div>
             </div>
 
@@ -566,7 +942,9 @@ function SettingsPage() {
         </Card>
 
         <div className="flex justify-end">
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>Simpan Pengaturan</Button>
+          <Button onClick={() => savePrinter.mutate()} disabled={savePrinter.isPending}>
+            Simpan Pengaturan Printer & QRIS
+          </Button>
         </div>
       </TabsContent>
 
@@ -702,27 +1080,181 @@ function SettingsPage() {
 
       <TabsContent value="users">
         <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Akun & Peran</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4" /> Akun & Penugasan Cabang
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Tentukan peran (Admin/Kasir) dan cabang penugasan untuk setiap akun kasir.
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {profiles.length === 0 && (
+              <p className="text-sm text-muted-foreground py-4 text-center">Belum ada akun terdaftar.</p>
+            )}
             {profiles.map((p: any) => (
-              <div key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border">
+              <div
+                key={p.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 p-3.5 rounded-xl border border-border/80 bg-card hover:bg-muted/25 transition-colors shadow-2xs"
+              >
                 <div className="min-w-0">
-                  <div className="font-medium truncate">{p.name ?? p.email}</div>
-                  <div className="text-xs text-muted-foreground truncate">{p.email}</div>
+                  <div className="font-semibold text-sm truncate flex items-center gap-2 flex-wrap">
+                    <span>{p.name || p.email}</span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+                        p.role === "cashier"
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                          : "bg-primary/10 text-primary border border-primary/20"
+                      }`}
+                    >
+                      <span>{p.role}</span>
+                      <span className="opacity-40">•</span>
+                      <span>{p.branch_name || "Semua Cabang (Pusat)"}</span>
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate mt-0.5">{p.email}</div>
                 </div>
-                <Select value={p.role} onValueChange={(v) => setRole.mutate({ userId: p.id, role: v as any })}>
-                  <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="cashier">Kasir</SelectItem>
-                  </SelectContent>
-                </Select>
+
+                <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Peran</span>
+                    <Select
+                      value={p.role}
+                      onValueChange={(newRole) =>
+                        setRole.mutate({
+                          userId: p.id,
+                          role: newRole as "admin" | "cashier",
+                          branch_name: p.branch_name || null,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-28 h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="cashier">Kasir</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Cabang</span>
+                    <Select
+                      value={p.branch_name || "__all__"}
+                      onValueChange={(val) => {
+                        if (val === "__custom__") {
+                          setCustomBranchDialog({
+                            open: true,
+                            userId: p.id,
+                            role: p.role,
+                            branchName: "",
+                          });
+                        } else if (val === "__all__") {
+                          setRole.mutate({
+                            userId: p.id,
+                            role: p.role,
+                            branch_name: null,
+                          });
+                        } else {
+                          setRole.mutate({
+                            userId: p.id,
+                            role: p.role,
+                            branch_name: val,
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-40 sm:w-44 h-9 text-xs">
+                        <SelectValue placeholder="Pilih Cabang" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Semua Cabang (Pusat)</SelectItem>
+                        {availableBranches.map((b: string) => (
+                          <SelectItem key={b} value={b}>
+                            {b}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__custom__" className="text-primary font-medium">
+                          + Tambah Cabang Lain...
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
             ))}
           </CardContent>
         </Card>
       </TabsContent>
     </Tabs>
+
+    <Dialog
+      open={customBranchDialog.open}
+      onOpenChange={(o: boolean) => setCustomBranchDialog((prev) => ({ ...prev, open: o }))}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">Tentukan Nama Cabang Baru</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Nama Cabang</Label>
+            <Input
+              placeholder="Contoh: Cabang Boulevard / Aneen 2"
+              value={customBranchDialog.branchName}
+              onChange={(e) =>
+                setCustomBranchDialog((prev) => ({ ...prev, branchName: e.target.value }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const bName = customBranchDialog.branchName.trim();
+                  if (!bName) {
+                    toast.error("Nama cabang tidak boleh kosong");
+                    return;
+                  }
+                  setRole.mutate({
+                    userId: customBranchDialog.userId,
+                    role: customBranchDialog.role,
+                    branch_name: bName,
+                  });
+                  setCustomBranchDialog({ open: false, userId: "", role: "cashier", branchName: "" });
+                }
+              }}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setCustomBranchDialog((prev) => ({ ...prev, open: false }))}
+          >
+            Batal
+          </Button>
+          <Button
+            onClick={() => {
+              const bName = customBranchDialog.branchName.trim();
+              if (!bName) {
+                toast.error("Nama cabang tidak boleh kosong");
+                return;
+              }
+              setRole.mutate({
+                userId: customBranchDialog.userId,
+                role: customBranchDialog.role,
+                branch_name: bName,
+              });
+              setCustomBranchDialog({ open: false, userId: "", role: "cashier", branchName: "" });
+            }}
+          >
+            Simpan Cabang
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

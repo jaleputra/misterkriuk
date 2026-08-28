@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +68,7 @@ const applyAdjustment = (price: number, type: string, value: number) => {
 };
 
 function TransactionPage() {
+  const { branchName } = useAuth();
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const { data: rawProducts = [] } = useQuery({
@@ -224,22 +226,39 @@ function TransactionPage() {
       if (payMethod === "cash" && Number(cashReceived) < total)
         throw new Error("Uang tunai kurang");
       const { data: u } = await supabase.auth.getUser();
-      const { data: tx, error } = await supabase
-        .from("transactions")
-        .insert({
-          total,
-          payment_method: payMethod,
-          cash_received: payMethod === "cash" ? Number(cashReceived) : null,
-          change_amount: payMethod === "cash" ? change : null,
-          cashier_id: u.user?.id,
-          sale_category: transactionType,
-          partner_name: transactionType === "partner" ? partnerName.trim() : null,
-          buyer_name: null,
-          house_block: houseBlock.trim() || null,
-        })
-        .select()
-        .single();
-      if (error) throw error;
+      const txPayload: any = {
+        total,
+        payment_method: payMethod,
+        cash_received: payMethod === "cash" ? Number(cashReceived) : null,
+        change_amount: payMethod === "cash" ? change : null,
+        cashier_id: u.user?.id,
+        sale_category: transactionType,
+        partner_name: transactionType === "partner" ? partnerName.trim() : null,
+        buyer_name: null,
+        house_block: houseBlock.trim() || null,
+        branch_name: branchName || null,
+      };
+
+      let tx: any = null;
+      try {
+        const { data: createdTx, error } = await supabase
+          .from("transactions")
+          .insert(txPayload)
+          .select()
+          .single();
+        if (error) throw error;
+        tx = createdTx;
+      } catch {
+        // Fallback if branch_name column is not present in schema cache
+        const { branch_name, ...basicPayload } = txPayload;
+        const { data: createdTx, error } = await supabase
+          .from("transactions")
+          .insert(basicPayload)
+          .select()
+          .single();
+        if (error) throw error;
+        tx = createdTx;
+      }
 
       const items = cart.map((i) => ({
         transaction_id: tx.id,

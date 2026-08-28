@@ -34,7 +34,7 @@ const TITLES: Record<string, string> = {
 };
 
 function AuthedLayout() {
-  const { role, user, loading } = useAuth();
+  const { role, user, branchName, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   if (loading) {
@@ -64,7 +64,12 @@ function AuthedLayout() {
   const title = Object.keys(TITLES).find((k) => pathname.startsWith(k));
   return (
     <div className="min-h-screen flex flex-col pb-20">
-      <AppHeader title={title ? TITLES[title] : ""} role={effectiveRole} email={user?.email ?? ""} />
+      <AppHeader
+        title={title ? TITLES[title] : ""}
+        role={effectiveRole}
+        email={user?.email ?? ""}
+        branchName={branchName}
+      />
       <main className="flex-1 mx-auto max-w-[1400px] w-full px-3 sm:px-4 py-3 sm:py-4">
         <Outlet />
       </main>
