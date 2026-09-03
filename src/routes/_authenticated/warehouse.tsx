@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectTrigger,
@@ -17,7 +18,7 @@ import {
 import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PackagePlus, History, Plus, Trash2, Pencil, Eye, Search } from "lucide-react";
+import { PackagePlus, History, Plus, Trash2, Pencil, Eye, Search, Store } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/warehouse")({
@@ -130,12 +131,35 @@ function WarehousePage() {
   const [entryType, setEntryType] = useState<"expense" | "restock">("expense");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
 
+  // Filter cabang khusus untuk Riwayat Pengeluaran (Admin)
+  const [historyBranchFilter, setHistoryBranchFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("app_admin_selected_branch") || "all";
+    }
+    return "all";
+  });
+
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    branches.forEach((b: any) => {
+      if (b.branch_name?.trim()) set.add(b.branch_name.trim());
+    });
+    userRoles.forEach((ur: any) => {
+      if (ur.branch_name?.trim()) set.add(ur.branch_name.trim());
+    });
+    (entries as any[]).forEach((e: any) => {
+      const b = getEntryBranch(e);
+      if (b?.trim()) set.add(b.trim());
+    });
+    return Array.from(set);
+  }, [branches, userRoles, entries, cashierBranchMap]);
+
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  const filteredEntries = (() => {
+  const filteredEntries = useMemo(() => {
     let list = entries as any[];
     if (role === "cashier") {
       const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
@@ -145,6 +169,8 @@ function WarehousePage() {
         if (myBranch && eb) return branchMatch(eb, myBranch);
         return false;
       });
+    } else if (role === "admin" && historyBranchFilter !== "all") {
+      list = list.filter((e) => branchMatch(getEntryBranch(e), historyBranchFilter));
     }
 
     const term = search.trim().toLocaleLowerCase("id-ID");
@@ -153,9 +179,11 @@ function WarehousePage() {
       const names = entry.stock_movements
         .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
         .join(" ");
+      const bName = getEntryBranch(entry) ?? "";
       const hay = [
         names,
         entry.branch_name,
+        bName,
         entry.restock_date,
         new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
         String(entry.shipping_cost ?? ""),
@@ -164,7 +192,17 @@ function WarehousePage() {
         .toLocaleLowerCase("id-ID");
       return hay.includes(term);
     });
-  })();
+  }, [entries, role, branchName, cashierBranchMap, user?.id, historyBranchFilter, search]);
+
+  const totalHistoryAmount = useMemo(() => {
+    return filteredEntries.reduce((sum, entry) => {
+      const movementsCost = (entry.stock_movements ?? []).reduce(
+        (s: number, m: any) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
+        0
+      );
+      return sum + Number(entry.shipping_cost ?? 0) + movementsCost;
+    }, 0);
+  }, [filteredEntries]);
 
   const reset = () => {
     setRestockDate(new Date().toISOString().slice(0, 10));
@@ -549,17 +587,52 @@ function WarehousePage() {
 
       <Card className="lg:col-span-3">
         <CardHeader>
-          <CardTitle className="text-base flex items-center justify-between w-full">
+          <CardTitle className="text-base flex items-center justify-between w-full flex-wrap gap-2">
             <span className="flex items-center gap-2">
               <History className="h-4 w-4" /> Riwayat Pengeluaran
             </span>
-            <span className="text-xs font-normal text-muted-foreground">
-              {filteredEntries.length} entri
-            </span>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs font-semibold text-destructive bg-destructive/5">
+                Total: {rupiah(totalHistoryAmount)} ({filteredEntries.length} entri)
+              </Badge>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex flex-col gap-2 border-b pb-3 mb-2">
+          <div className="flex flex-col gap-2.5 border-b pb-3 mb-2">
+            {/* Filter Cabang untuk Admin */}
+            {role === "admin" && (
+              <div className="flex items-center justify-between flex-wrap gap-2 p-2 bg-muted/40 rounded-lg border">
+                <div className="flex items-center gap-1.5">
+                  <Store className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">Filter Cabang:</span>
+                </div>
+                <Select
+                  value={historyBranchFilter}
+                  onValueChange={(val) => {
+                    setHistoryBranchFilter(val);
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("app_admin_selected_branch", val);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-[180px] h-8 text-xs bg-background">
+                    <SelectValue placeholder="Pilih Cabang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      <span className="font-semibold">Semua Cabang</span>
+                    </SelectItem>
+                    {branchOptions.map((b) => (
+                      <SelectItem key={b} value={b}>
+                        {b}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-semibold text-muted-foreground">Filter Tanggal:</span>
               <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
@@ -656,9 +729,10 @@ function WarehousePage() {
                   >
                     {(entry.entry_type ?? "expense") === "restock" ? "Restok" : "Pengeluaran"}
                   </span>
-                  {entry.branch_name && (
-                    <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-                      {entry.branch_name}
+                  {(entry.branch_name || getEntryBranch(entry)) && (
+                    <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium flex items-center gap-1">
+                      <Store className="h-2.5 w-2.5" />
+                      {entry.branch_name || getEntryBranch(entry)}
                     </span>
                   )}
                   <span>

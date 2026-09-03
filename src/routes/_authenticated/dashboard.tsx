@@ -77,7 +77,19 @@ function Dashboard() {
 
 
   // Filter Cabang (Hanya untuk Admin)
-  const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("app_admin_selected_branch") || "all";
+    }
+    return "all";
+  });
+
+  const handleSelectBranch = (val: string) => {
+    setSelectedBranch(val);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("app_admin_selected_branch", val);
+    }
+  };
 
   const [detailModal, setDetailModal] = useState<{
     open: boolean;
@@ -714,7 +726,7 @@ function Dashboard() {
           {role === "admin" && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</span>
-              <Select value={selectedBranch} onValueChange={(v) => setSelectedBranch(v)}>
+              <Select value={selectedBranch} onValueChange={(v) => handleSelectBranch(v)}>
                 <SelectTrigger className="w-[170px] h-9">
                   <SelectValue placeholder="Pilih Cabang" />
                 </SelectTrigger>
@@ -731,32 +743,30 @@ function Dashboard() {
               </Select>
             </div>
           )}
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">Filter Waktu:</span>
-            <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
-              <SelectTrigger className="w-[150px] h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Hari Ini</SelectItem>
-                <SelectItem value="7">7 Hari Terakhir</SelectItem>
-                <SelectItem value="14">14 Hari Terakhir</SelectItem>
-                <SelectItem value="30">30 Hari Terakhir</SelectItem>
-                <SelectItem value="month">Bulan Ini</SelectItem>
-                <SelectItem value="all">Semua Waktu</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
       </div>
 
-      {/* Custom date range filter (new) */}
+      {/* Date Filter */}
       <div className="flex items-center gap-2 flex-wrap text-xs">
-        <span className="text-muted-foreground">Rentang Kustom:</span>
-        <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 w-[150px]" />
+        <span className="text-muted-foreground">Filter Waktu:</span>
+        <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
+          <SelectTrigger className="w-[160px] h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="today">Hari Ini</SelectItem>
+            <SelectItem value="7">7 Hari Terakhir</SelectItem>
+            <SelectItem value="14">14 Hari Terakhir</SelectItem>
+            <SelectItem value="30">30 Hari Terakhir</SelectItem>
+            <SelectItem value="month">Bulan Ini</SelectItem>
+            <SelectItem value="all">Semua Waktu</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <span className="text-muted-foreground ml-2">Rentang Kustom:</span>
+        <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 w-[140px] text-xs" />
         <span className="text-muted-foreground">s/d</span>
-        <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 w-[150px]" />
+        <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 w-[140px] text-xs" />
         {(fromDate || toDate) && (
           <Button size="sm" variant="ghost" className="h-8" onClick={() => { setFromDate(""); setToDate(""); }}>Reset</Button>
         )}
@@ -772,35 +782,35 @@ function Dashboard() {
           label="Pemasukan Keseluruhan"
           value={role === "cashier" ? "XXXXX" : rupiah(overallRevenue)}
           sub={role === "cashier" ? `${txs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${txs.length} Tx · Cash: ${rupiah(overallCashRevenue)} · QRIS: ${rupiah(overallQrisRevenue)}`}
-          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, saleCategory: "all" } })}
+          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, saleCategory: "all", branch: selectedBranch !== "all" ? selectedBranch : undefined } })}
         />
         <Stat
           icon={TrendingUp}
           label="Pengeluaran"
           value={role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}
           sub={`${expenseEntries.length} Input Pengeluaran`}
-          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, type: "expense" } })}
+          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, type: "expense", branch: selectedBranch !== "all" ? selectedBranch : undefined } })}
         />
         <Stat
           icon={Package}
           label="Restok (Keseluruhan)"
           value={role === "cashier" ? "XXXXX" : rupiah(restockTotal)}
           sub={`${allRestockEntries.length} Restok · Mengurangi total, bukan harian`}
-          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, type: "restock" } })}
+          onClick={() => navigate({ to: "/expense-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, type: "restock", branch: selectedBranch !== "all" ? selectedBranch : undefined } })}
         />
         <Stat
           icon={Users}
           label="Penjualan Partner"
           value={role === "cashier" ? "XXXXX" : rupiah(partnerRevenue)}
           sub={role === "cashier" ? `${partnerTxs.length} Tx · Cash: XXXXX · QRIS: XXXXX` : `${partnerTxs.length} Tx · Cash: ${rupiah(partnerCashRevenue)} · QRIS: ${rupiah(partnerQrisRevenue)}`}
-          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, saleCategory: "partner" } })}
+          onClick={() => navigate({ to: "/income-details", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, saleCategory: "partner", branch: selectedBranch !== "all" ? selectedBranch : undefined } })}
         />
         <Stat
           icon={ShoppingBag}
           label="Jumlah Produk Terjual"
           value={`${totalProductsSold} Pcs (${packInfo.packs} Pack)`}
           sub={`Detail: D:${packInfo.dada} · PA:${packInfo.pahaAtas} · PB:${packInfo.pahaBawah} · S:${packInfo.sayap}`}
-          onClick={() => navigate({ to: "/sold-products", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined } })}
+          onClick={() => navigate({ to: "/sold-products", search: { dateFilter, fromDate: fromDate || undefined, toDate: toDate || undefined, branch: selectedBranch !== "all" ? selectedBranch : undefined } })}
         />
         <Stat
           icon={BarChart3}
@@ -1139,13 +1149,38 @@ function Dashboard() {
 
           {detailModal.type === "pendapatan" && (
             <div className="space-y-3 py-2 text-sm">
+              <div className="flex justify-between items-center bg-muted/50 p-2.5 rounded-lg border text-xs">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Store className="h-3.5 w-3.5 text-primary" /> Filter Cabang Aktif:
+                </span>
+                <span className="font-semibold text-primary">
+                  {selectedBranch === "all" ? "Semua Cabang" : selectedBranch}
+                </span>
+              </div>
               <div className="flex justify-between items-center border-b pb-2">
-                <span className="text-muted-foreground">Total Pemasukan</span>
+                <div>
+                  <span className="text-muted-foreground">Total Pemasukan</span>
+                  <div className="text-[11px] text-muted-foreground">
+                    Cash: {role === "cashier" ? "XXXXX" : rupiah(overallCashRevenue)} · QRIS: {role === "cashier" ? "XXXXX" : rupiah(overallQrisRevenue)}
+                  </div>
+                </div>
                 <span className="font-semibold text-success">{role === "cashier" ? "XXXXX" : rupiah(overallRevenue)}</span>
               </div>
               <div className="flex justify-between items-center border-b pb-2">
-                <span className="text-muted-foreground">Total Pengeluaran</span>
+                <div>
+                  <span className="text-muted-foreground">Total Pengeluaran</span>
+                  <div className="text-[11px] text-muted-foreground">
+                    Cash: {role === "cashier" ? "XXXXX" : rupiah(cashExpenditure)} · QRIS: {role === "cashier" ? "XXXXX" : rupiah(qrisExpenditure)}
+                  </div>
+                </div>
                 <span className="font-semibold text-destructive">{role === "cashier" ? "XXXXX" : rupiah(totalExpenditure)}</span>
+              </div>
+              <div className="flex justify-between items-center border-b pb-2">
+                <div>
+                  <span className="text-muted-foreground">Total Restok</span>
+                  <div className="text-[11px] text-muted-foreground">Mengurangi pendapatan bersih keseluruhan</div>
+                </div>
+                <span className="font-semibold text-destructive">{role === "cashier" ? "XXXXX" : `-${rupiah(restockTotal)}`}</span>
               </div>
               <div className="flex justify-between items-center pt-2 text-base font-bold">
                 <span>Pendapatan Bersih</span>
@@ -1153,6 +1188,9 @@ function Dashboard() {
                   {role === "cashier" ? "XXXXX" : rupiah(netIncome)}
                 </span>
               </div>
+              <p className="text-[11px] text-muted-foreground pt-1">
+                * Data pendapatan bersih di atas telah disesuaikan dengan filter: <strong>{selectedBranch === "all" ? "Semua Cabang" : selectedBranch}</strong>.
+              </p>
             </div>
           )}
         </DialogContent>

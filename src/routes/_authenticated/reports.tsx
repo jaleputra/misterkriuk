@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,16 +29,36 @@ import {
   Users,
   Store,
   Lock,
+  Plus,
+  Clock,
+  Calendar,
+  RotateCcw,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/reports")({
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      branch: (search.branch as string) || undefined,
+      date: (search.date as string) || undefined,
+      endDate: (search.endDate as string) || undefined,
+      startTime: (search.startTime as string) || undefined,
+      endTime: (search.endTime as string) || undefined,
+    } as {
+      branch?: string;
+      date?: string;
+      endDate?: string;
+      startTime?: string;
+      endTime?: string;
+    };
+  },
   ssr: false,
   component: ReportsPage,
 });
 
 function ReportsPage() {
   const { role: rawRole, branchName, loading, user } = useAuth();
-  const navigate = useNavigate();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const searchParams = Route.useSearch();
   const qc = useQueryClient();
 
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
@@ -53,13 +73,100 @@ function ReportsPage() {
     return `${year}-${month}-${day}`;
   };
 
-  const [date, setDate] = useState(() => getLocalDateStr());
+  const [date, setDate] = useState(() => searchParams.date || getLocalDateStr());
+  const [endDate, setEndDate] = useState<string>(() => searchParams.endDate || "");
+  const [startTime, setStartTime] = useState<string>(() => searchParams.startTime || "");
+  const [endTime, setEndTime] = useState<string>(() => searchParams.endTime || "");
   const [initialCashInput, setInitialCashInput] = useState("");
   const [note, setNote] = useState("");
   const [tab, setTab] = useState<"harian" | "partner">("harian");
 
+  const handleDateChange = (val: string) => {
+    setDate(val);
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        date: val || undefined,
+      }),
+    });
+  };
+
+  const handleEndDateChange = (val: string) => {
+    setEndDate(val);
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        endDate: val || undefined,
+      }),
+    });
+  };
+
+  const handleStartTimeChange = (val: string) => {
+    setStartTime(val);
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        startTime: val || undefined,
+      }),
+    });
+  };
+
+  const handleEndTimeChange = (val: string) => {
+    setEndTime(val);
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        endTime: val || undefined,
+      }),
+    });
+  };
+
+  const handleResetTimeAndDateFilter = () => {
+    setEndDate("");
+    setStartTime("");
+    setEndTime("");
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        endDate: undefined,
+        startTime: undefined,
+        endTime: undefined,
+      }),
+    });
+  };
+
+  const getEntryTime24h = (isoString?: string | null) => {
+    if (!isoString) return "";
+    const d = new Date(isoString);
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    return `${h}:${m}`;
+  };
+
+  const isEntryTimeInRange = (isoString?: string | null, start?: string, end?: string) => {
+    if (!start && !end) return true;
+    if (!isoString) return true;
+    const time = getEntryTime24h(isoString);
+    if (start && end) {
+      if (start <= end) {
+        return time >= start && time <= end;
+      } else {
+        return time >= start || time <= end;
+      }
+    }
+    if (start) return time >= start;
+    if (end) return time <= end;
+    return true;
+  };
+
   // Pilihan cabang untuk Admin (Kasir otomatis terkunci ke cabangnya)
-  const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+    if (searchParams.branch) return searchParams.branch;
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("app_admin_selected_branch") || "all";
+    }
+    return "all";
+  });
 
   useEffect(() => {
     if (!loading && role && role !== "admin" && role !== "cashier") {
@@ -165,22 +272,37 @@ function ReportsPage() {
     enabled: role === "admin" || role === "cashier",
   });
 
+  const isDateRange = !!(endDate && endDate !== date);
+  const minDate = isDateRange ? (date < endDate ? date : endDate) : date;
+  const maxDate = isDateRange ? (date < endDate ? endDate : date) : date;
+
   const { data: entries = [] } = useQuery({
-    queryKey: ["reports_entries", date],
+    queryKey: ["reports_entries", minDate, maxDate, isDateRange],
     queryFn: async () => {
       try {
-        return await fetchAllRows<any>((from, to) =>
-          supabase
+        return await fetchAllRows<any>((from, to) => {
+          let q = supabase
             .from("stock_entries")
-            .select("*, stock_movements(quantity, initial_price)")
-            .eq("restock_date", date)
-            .range(from, to),
-        );
+            .select("*, stock_movements(quantity, initial_price, products(name))")
+            .order("created_at", { ascending: false })
+            .range(from, to);
+          if (isDateRange) {
+            q = q.gte("restock_date", minDate).lte("restock_date", maxDate);
+          } else {
+            q = q.eq("restock_date", date);
+          }
+          return q;
+        });
       } catch {
-        const { data } = await supabase
+        let q = supabase
           .from("stock_entries")
-          .select("*, stock_movements(quantity, initial_price)")
-          .eq("restock_date", date);
+          .select("*, stock_movements(quantity, initial_price, products(name))");
+        if (isDateRange) {
+          q = q.gte("restock_date", minDate).lte("restock_date", maxDate);
+        } else {
+          q = q.eq("restock_date", date);
+        }
+        const { data } = await q;
         return data ?? [];
       }
     },
@@ -234,6 +356,15 @@ function ReportsPage() {
     if (val !== "all") {
       setAdminInputBranch(val);
     }
+    if (typeof window !== "undefined") {
+      localStorage.setItem("app_admin_selected_branch", val);
+    }
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        branch: val !== "all" ? val : undefined,
+      }),
+    });
   };
 
   // Laporan yang relevan dengan form input saat ini
@@ -279,20 +410,27 @@ function ReportsPage() {
     return (txs as any[]).filter((t) => branchMatch(getTxBranch(t), selectedBranch));
   }, [txs, role, branchName, selectedBranch, cashierBranchMap, user?.id]);
 
-  // Filter pengeluaran berdasarkan role dan pilihan cabang
+  // Filter pengeluaran berdasarkan role, pilihan cabang, dan rentang waktu (jam & menit)
   const filteredEntries = useMemo(() => {
+    let list = entries as any[];
     if (role === "cashier") {
       const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
-      return (entries as any[]).filter((e) => {
+      list = list.filter((e) => {
         if (user?.id && e.created_by === user.id) return true;
         const eb = getEntryBranch(e);
         if (myBranch && eb) return branchMatch(eb, myBranch);
         return false;
       });
+    } else if (role === "admin" && selectedBranch !== "all") {
+      list = list.filter((e) => branchMatch(getEntryBranch(e), selectedBranch));
     }
-    if (selectedBranch === "all") return entries as any[];
-    return (entries as any[]).filter((e) => branchMatch(getEntryBranch(e), selectedBranch));
-  }, [entries, role, branchName, selectedBranch, cashierBranchMap, user?.id]);
+
+    if (startTime || endTime) {
+      list = list.filter((e) => isEntryTimeInRange(e.created_at, startTime, endTime));
+    }
+
+    return list;
+  }, [entries, role, branchName, selectedBranch, cashierBranchMap, user?.id, startTime, endTime]);
 
   // Transaksi partner dipisah dari laporan harian
   const partnerTxs = useMemo(
@@ -658,9 +796,23 @@ function ReportsPage() {
 
       {tab === "harian" && role === "cashier" && (
         <>
-          {/* 3 Kartu Ringkas Kasir */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* 5 Kartu Lengkap Kasir (termasuk Pemasukan & Pengeluaran) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <StatCard icon={Wallet} label="Kas Awal" value={rupiah(initialCash)} tone="muted" />
+            <StatCard
+              icon={TrendingUp}
+              label="Pemasukan"
+              value={rupiah(totalIn)}
+              sub={`Cash ${rupiah(cashIn)} · QRIS ${rupiah(qrisIn)}`}
+              tone="success"
+            />
+            <StatCard
+              icon={TrendingDown}
+              label="Pengeluaran"
+              value={rupiah(totalOut)}
+              sub={`Cash ${rupiah(cashOut)} · QRIS ${rupiah(qrisOut)}`}
+              tone="destructive"
+            />
             <StatCard
               icon={Wallet}
               label="Total Cash"
@@ -682,7 +834,7 @@ function ReportsPage() {
             <CardHeader>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-primary" /> Input Kas Awal ({branchName || "Cabang Utama"})
+                  <Wallet className="h-4 w-4 text-primary" /> Input Kas Awal ({branchName || "Cabang Kasir"})
                 </CardTitle>
                 {isInitialCashLocked && (
                   <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs">
@@ -726,6 +878,180 @@ function ReportsPage() {
                   </Button>
                 )}
               </form>
+            </CardContent>
+          </Card>
+
+          {/* Ringkasan Aliran Kas & QRIS Kasir */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Tabel Cash (Tunai) */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-primary" />
+                  Aliran Kas (Tunai)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm text-left border-collapse min-w-[360px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3 font-semibold text-center">Kas Awal</th>
+                        <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">
+                          Pemasukan Cash
+                        </th>
+                        <th className="px-4 py-3 font-semibold text-center text-destructive">
+                          Pengeluaran Cash
+                        </th>
+                        <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">
+                          Total Cash
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      <tr className="hover:bg-muted/10 transition-colors">
+                        <td className="px-4 py-4 text-center">{rupiah(initialCash)}</td>
+                        <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">
+                          {rupiah(cashIn)}
+                        </td>
+                        <td className="px-4 py-4 text-center text-destructive">
+                          {rupiah(cashOut)}
+                        </td>
+                        <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">
+                          {rupiah(totalCashResult)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tabel QRIS (Non-Tunai) */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                  Aliran QRIS (Non-Tunai)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm text-left border-collapse min-w-[300px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">
+                          Pemasukan QRIS
+                        </th>
+                        <th className="px-4 py-3 font-semibold text-center text-destructive">
+                          Pengeluaran QRIS
+                        </th>
+                        <th className="px-4 py-3 font-semibold text-center text-primary bg-primary/5">
+                          Total QRIS
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      <tr className="hover:bg-muted/10 transition-colors">
+                        <td className="px-4 py-4 text-center text-emerald-600 dark:text-emerald-400">
+                          {rupiah(qrisIn)}
+                        </td>
+                        <td className="px-4 py-4 text-center text-destructive">
+                          {rupiah(qrisOut)}
+                        </td>
+                        <td className="px-4 py-4 text-center text-primary bg-primary/5 font-bold">
+                          {rupiah(totalQrisResult)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Tabel Detail Daftar Pengeluaran Kasir Sesuai Input Cabang & Role */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 pb-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4 text-destructive" />
+                  Daftar Pengeluaran ({branchName || "Cabang Kasir"})
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Pengeluaran berdasarkan input cabang dan akun kasir untuk tanggal {new Date(`${date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs font-semibold text-destructive">
+                  Total Pengeluaran: {rupiah(totalOut)} ({expenseEntries.length} entri)
+                </Badge>
+                <Link to="/warehouse">
+                  <Button size="sm" variant="outline" className="h-8 text-xs">
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Catat Pengeluaran
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {expenseEntries.length === 0 ? (
+                <div className="text-center py-8 border border-dashed rounded-lg text-sm text-muted-foreground">
+                  Belum ada pengeluaran yang tercatat untuk cabang ini pada tanggal ini.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm text-left border-collapse min-w-[500px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3">Waktu</th>
+                        <th className="px-4 py-3">Rincian Barang / Pengeluaran</th>
+                        <th className="px-4 py-3 text-center">Metode</th>
+                        <th className="px-4 py-3 text-right">Ongkir</th>
+                        <th className="px-4 py-3 text-right font-bold text-destructive">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      {expenseEntries.map((e: any) => {
+                        const itemsSummary = (e.stock_movements ?? [])
+                          .map((m: any) => {
+                            const name = (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, "");
+                            return m.quantity ? `${name || "Barang"} (${m.quantity}x)` : name;
+                          })
+                          .filter(Boolean)
+                          .join(", ");
+                        const cost = entryTotal(e);
+                        return (
+                          <tr key={e.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(e.created_at || `${date}T00:00:00`).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-semibold text-foreground">{itemsSummary || "Pengeluaran Operasional"}</span>
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              <Badge variant="secondary" className="text-[10px] uppercase font-bold">
+                                {e.payment_method || "cash"}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-right text-xs text-muted-foreground whitespace-nowrap">
+                              {Number(e.shipping_cost ?? 0) > 0 ? rupiah(e.shipping_cost) : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-destructive whitespace-nowrap">
+                              {rupiah(cost)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-muted/30 font-bold border-t border-border">
+                        <td colSpan={4} className="px-4 py-3 text-right">Total Pengeluaran:</td>
+                        <td className="px-4 py-3 text-right text-destructive font-bold">{rupiah(totalOut)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </>
@@ -955,6 +1281,287 @@ function ReportsPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Tabel Detail & Filter Pengeluaran Admin */}
+          <Card className="border-primary/20 shadow-sm">
+            <CardHeader className="space-y-3 pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4 text-destructive" />
+                    Daftar Pengeluaran ({selectedBranch === "all" ? "Semua Cabang" : selectedBranch})
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Filter pengeluaran berdasarkan cabang, rentang tanggal, dan jam/waktu operasional
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link to="/warehouse">
+                    <Button size="sm" variant="outline" className="h-8 text-xs">
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Catat Pengeluaran
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Toolbar Filter: Cabang, Tanggal, dan Waktu */}
+              <div className="p-3 bg-muted/40 rounded-lg border border-border space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
+                  <span className="flex items-center gap-1.5 text-foreground">
+                    <Clock className="h-3.5 w-3.5 text-primary" /> Filter Pengeluaran (Cabang, Tanggal & Waktu)
+                  </span>
+                  {(endDate || startTime || endTime || selectedBranch !== "all") && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-[11px] text-destructive hover:text-destructive"
+                      onClick={handleResetTimeAndDateFilter}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" /> Reset Filter Pengeluaran
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  {/* 1. Filter Cabang */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <Store className="h-3 w-3 text-primary" /> Cabang:
+                    </Label>
+                    <Select value={selectedBranch} onValueChange={handleSelectBranchFilter}>
+                      <SelectTrigger className="h-8 text-xs bg-background">
+                        <SelectValue placeholder="Pilih Cabang" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          <span className="font-semibold">Semua Cabang</span>
+                        </SelectItem>
+                        {branchOptions.map((b) => (
+                          <SelectItem key={b} value={b}>
+                            {b}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* 2. Filter Tanggal */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <Calendar className="h-3 w-3 text-primary" /> Tanggal:
+                    </Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="date"
+                        value={date}
+                        onChange={(e) => handleDateChange(e.target.value)}
+                        className="h-8 text-xs bg-background flex-1"
+                        title="Dari Tanggal"
+                      />
+                      <span className="text-[11px] text-muted-foreground px-0.5">s/d</span>
+                      <Input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => handleEndDateChange(e.target.value)}
+                        placeholder="Sampai Tanggal"
+                        className="h-8 text-xs bg-background flex-1"
+                        title="Sampai Tanggal (Opsional untuk rentang hari)"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3. Filter Waktu (Jam) */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3 text-primary" /> Waktu / Jam:
+                    </Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => handleStartTimeChange(e.target.value)}
+                        className="h-8 text-xs bg-background flex-1"
+                        title="Jam Mulai"
+                      />
+                      <span className="text-[11px] text-muted-foreground px-0.5">s/d</span>
+                      <Input
+                        type="time"
+                        value={endTime}
+                        onChange={(e) => handleEndTimeChange(e.target.value)}
+                        className="h-8 text-xs bg-background flex-1"
+                        title="Jam Selesai"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preset Waktu Cepat */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-muted-foreground">Preset Jam:</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={!startTime && !endTime ? "secondary" : "outline"}
+                    className="h-5 px-2 text-[10px]"
+                    onClick={() => {
+                      setStartTime("");
+                      setEndTime("");
+                    }}
+                  >
+                    Semua Jam
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={startTime === "08:00" && endTime === "16:00" ? "secondary" : "outline"}
+                    className="h-5 px-2 text-[10px]"
+                    onClick={() => {
+                      setStartTime("08:00");
+                      setEndTime("16:00");
+                    }}
+                  >
+                    Pagi (08:00 - 16:00)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={startTime === "16:00" && endTime === "23:00" ? "secondary" : "outline"}
+                    className="h-5 px-2 text-[10px]"
+                    onClick={() => {
+                      setStartTime("16:00");
+                      setEndTime("23:00");
+                    }}
+                  >
+                    Malam (16:00 - 23:00)
+                  </Button>
+                </div>
+              </div>
+
+              {/* Total Pengeluaran Sesuai Filter (Card Khusus) */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1">
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg sm:col-span-2 flex flex-col justify-between">
+                  <span className="text-xs font-semibold text-destructive uppercase tracking-wider flex items-center gap-1.5">
+                    <TrendingDown className="h-4 w-4" /> Total Pengeluaran (Sesuai Filter)
+                  </span>
+                  <div className="text-2xl font-extrabold text-destructive mt-1">
+                    {rupiah(totalOut)}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1 text-[11px] text-muted-foreground">
+                    <Badge variant="outline" className="text-[10px] bg-background">
+                      {selectedBranch === "all" ? "Semua Cabang" : selectedBranch}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px] bg-background">
+                      {isDateRange ? `${date} s/d ${endDate}` : date}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px] bg-background">
+                      {startTime || endTime ? `${startTime || "00:00"} - ${endTime || "23:59"}` : "Semua Jam"}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-card border border-border rounded-lg flex flex-col justify-center">
+                  <span className="text-[11px] text-muted-foreground">Cash Keluar</span>
+                  <span className="text-base font-bold text-foreground mt-0.5">{rupiah(cashOut)}</span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">
+                    {expenseEntries.filter((e) => (e.payment_method ?? "cash") === "cash").length} transaksi
+                  </span>
+                </div>
+
+                <div className="p-3 bg-card border border-border rounded-lg flex flex-col justify-center">
+                  <span className="text-[11px] text-muted-foreground">QRIS Keluar</span>
+                  <span className="text-base font-bold text-foreground mt-0.5">{rupiah(qrisOut)}</span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">
+                    {expenseEntries.filter((e) => e.payment_method === "qris").length} transaksi
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              {expenseEntries.length === 0 ? (
+                <div className="text-center py-8 border border-dashed rounded-lg text-sm text-muted-foreground space-y-1">
+                  <p className="font-medium text-foreground">Tidak ada pengeluaran ditemukan</p>
+                  <p className="text-xs">
+                    Tidak ada transaksi pengeluaran untuk cabang {selectedBranch === "all" ? "mana pun" : selectedBranch} pada tanggal dan rentang waktu yang dipilih.
+                  </p>
+                  {(endDate || startTime || endTime) && (
+                    <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={handleResetTimeAndDateFilter}>
+                      Reset Filter Waktu & Tanggal
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                  <table className="w-full text-sm text-left border-collapse min-w-[580px]">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <th className="px-4 py-3">Waktu</th>
+                        <th className="px-4 py-3">Cabang</th>
+                        <th className="px-4 py-3">Rincian Barang / Pengeluaran</th>
+                        <th className="px-4 py-3 text-center">Metode</th>
+                        <th className="px-4 py-3 text-right">Ongkir</th>
+                        <th className="px-4 py-3 text-right font-bold text-destructive">Total Biaya</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      {expenseEntries.map((e: any) => {
+                        const itemsSummary = (e.stock_movements ?? [])
+                          .map((m: any) => {
+                            const name = (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, "");
+                            return m.quantity ? `${name || "Barang"} (${m.quantity}x)` : name;
+                          })
+                          .filter(Boolean)
+                          .join(", ");
+                        const cost = entryTotal(e);
+                        const bName = getEntryBranch(e) || "Cabang Pusat";
+                        const entryDateObj = new Date(e.created_at || `${date}T00:00:00`);
+                        const dateFormatted = entryDateObj.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+                        const timeFormatted = entryDateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+                        return (
+                          <tr key={e.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                              <span className="font-semibold text-foreground">{timeFormatted}</span>
+                              <span className="text-[10px] text-muted-foreground block">{dateFormatted}</span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <Badge variant="outline" className="text-xs font-medium">
+                                <Store className="h-3 w-3 mr-1 text-primary" /> {bName}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-semibold text-foreground">{itemsSummary || "Pengeluaran Operasional"}</span>
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              <Badge variant="secondary" className="text-[10px] uppercase font-bold">
+                                {e.payment_method || "cash"}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-right text-xs text-muted-foreground whitespace-nowrap">
+                              {Number(e.shipping_cost ?? 0) > 0 ? rupiah(e.shipping_cost) : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-destructive whitespace-nowrap">
+                              {rupiah(cost)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-muted/40 font-bold border-t border-border">
+                        <td colSpan={5} className="px-4 py-3 text-right text-foreground">
+                          Total Pengeluaran ({expenseEntries.length} entri):
+                        </td>
+                        <td className="px-4 py-3 text-right text-destructive font-extrabold text-base">
+                          {rupiah(totalOut)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

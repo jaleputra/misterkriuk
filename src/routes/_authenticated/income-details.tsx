@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search } from "lucide-react";
+import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search, Store } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
@@ -25,11 +25,13 @@ export const Route = createFileRoute("/_authenticated/income-details")({
       fromDate: (search.fromDate as string) || undefined,
       toDate: (search.toDate as string) || undefined,
       saleCategory: (search.saleCategory as "regular" | "partner" | "all") || undefined,
+      branch: (search.branch as string) || undefined,
     } as {
       dateFilter?: "today" | "7" | "14" | "30" | "month" | "all";
       fromDate?: string;
       toDate?: string;
       saleCategory?: "regular" | "partner" | "all";
+      branch?: string;
     };
   },
   ssr: false,
@@ -37,6 +39,7 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 });
 
 function IncomeDetails() {
+  const navigate = useNavigate({ from: Route.fullPath });
   const { role: rawRole, user, branchName } = useAuth();
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
@@ -52,6 +55,44 @@ function IncomeDetails() {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "cash" | "qris">("all");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+    if (searchParams.branch) return searchParams.branch;
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("app_admin_selected_branch") || "all";
+    }
+    return "all";
+  });
+
+  const handleBranchChange = (val: string) => {
+    setSelectedBranch(val);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("app_admin_selected_branch", val);
+    }
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        branch: val !== "all" ? val : undefined,
+      }),
+    });
+  };
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        if (error) {
+          const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+          return localData ? JSON.parse(localData) : [];
+        }
+        return data ?? [];
+      } catch {
+        const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+        return localData ? JSON.parse(localData) : [];
+      }
+    },
+  });
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
@@ -146,6 +187,21 @@ function IncomeDetails() {
   const items = data?.items ?? [];
   const products = data?.products ?? [];
 
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    branches.forEach((b: any) => {
+      if (b.branch_name?.trim()) set.add(b.branch_name.trim());
+    });
+    userRoles.forEach((ur: any) => {
+      if (ur.branch_name?.trim()) set.add(ur.branch_name.trim());
+    });
+    (allTxs as any[]).forEach((t: any) => {
+      const b = getTxBranch(t);
+      if (b?.trim()) set.add(b.trim());
+    });
+    return Array.from(set);
+  }, [branches, userRoles, allTxs, cashierBranchMap]);
+
   const saleCategoryFilter = searchParams.saleCategory;
 
   const txs = useMemo(() => {
@@ -160,6 +216,8 @@ function IncomeDetails() {
         if (myBranch && b) return branchMatch(b, myBranch);
         return false;
       });
+    } else if (role === "admin" && selectedBranch !== "all") {
+      filtered = filtered.filter((t: any) => branchMatch(getTxBranch(t), selectedBranch));
     }
 
     if (saleCategoryFilter === "partner") {
@@ -389,7 +447,7 @@ function IncomeDetails() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {role !== "cashier" && (
             <Link to="/dashboard">
               <Button variant="ghost" size="sm">
@@ -397,14 +455,48 @@ function IncomeDetails() {
               </Button>
             </Link>
           )}
-          <h1 className="text-xl font-bold">
-            {saleCategoryFilter === "partner" ? "Detail Penjualan Partner" : "Detail Pemasukan"}
-          </h1>
+          <div>
+            <h1 className="text-xl font-bold">
+              {saleCategoryFilter === "partner" ? "Detail Penjualan Partner" : "Detail Pemasukan"}
+            </h1>
+            {role === "admin" && selectedBranch !== "all" && (
+              <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
+                <Store className="h-3.5 w-3.5" />
+                Cabang: <span className="font-semibold">{selectedBranch}</span>
+              </p>
+            )}
+            {role === "cashier" && (
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                <Store className="h-3.5 w-3.5" />
+                Cabang: <span className="font-medium">{branchName || "Cabang Kasir"}</span>
+              </p>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Branch Filter for Admin */}
+          {role === "admin" && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</span>
+              <Select value={selectedBranch} onValueChange={(v) => handleBranchChange(v)}>
+                <SelectTrigger className="w-[150px] h-9 text-xs">
+                  <SelectValue placeholder="Pilih Cabang" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="font-medium">Semua Cabang</span>
+                  </SelectItem>
+                  {branchOptions.map((b) => (
+                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <span className="text-xs text-muted-foreground">Metode:</span>
           <Select value={paymentMethodFilter} onValueChange={(v: any) => setPaymentMethodFilter(v)}>
-            <SelectTrigger className="w-[110px]">
+            <SelectTrigger className="w-[110px] h-9 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -416,7 +508,7 @@ function IncomeDetails() {
 
           <span className="text-xs text-muted-foreground">Filter Tanggal:</span>
           <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-[150px] h-9 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft, Search, Store } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -17,6 +17,12 @@ export const Route = createFileRoute("/_authenticated/sold-products")({
       dateFilter: (search.dateFilter as "today" | "7" | "14" | "30" | "month" | "all") || "14",
       fromDate: (search.fromDate as string) || undefined,
       toDate: (search.toDate as string) || undefined,
+      branch: (search.branch as string) || undefined,
+    } as {
+      dateFilter?: "today" | "7" | "14" | "30" | "month" | "all";
+      fromDate?: string;
+      toDate?: string;
+      branch?: string;
     };
   },
   ssr: false,
@@ -40,6 +46,46 @@ function SoldProductsDetail() {
   const role: "admin" | "cashier" = isExplicitKasir
     ? "cashier"
     : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
+
+  const searchParams = Route.useSearch();
+
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+    if (searchParams.branch) return searchParams.branch;
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("app_admin_selected_branch") || "all";
+    }
+    return "all";
+  });
+
+  const handleBranchChange = (val: string) => {
+    setSelectedBranch(val);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("app_admin_selected_branch", val);
+    }
+    navigate({
+      search: (prev: any) => ({
+        ...prev,
+        branch: val !== "all" ? val : undefined,
+      }),
+    });
+  };
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        if (error) {
+          const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+          return localData ? JSON.parse(localData) : [];
+        }
+        return data ?? [];
+      } catch {
+        const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+        return localData ? JSON.parse(localData) : [];
+      }
+    },
+  });
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
@@ -70,7 +116,6 @@ function SoldProductsDetail() {
     return null;
   };
 
-  const searchParams = Route.useSearch();
   const dateFilter = searchParams.dateFilter || "14";
   const [fromDate, setFromDate] = useState(searchParams.fromDate || "");
   const [toDate, setToDate] = useState(searchParams.toDate || "");
@@ -194,6 +239,22 @@ function SoldProductsDetail() {
   });
 
   const allTransactions = data?.transactions ?? [];
+
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    branches.forEach((b: any) => {
+      if (b.branch_name?.trim()) set.add(b.branch_name.trim());
+    });
+    userRoles.forEach((ur: any) => {
+      if (ur.branch_name?.trim()) set.add(ur.branch_name.trim());
+    });
+    (allTransactions as any[]).forEach((t: any) => {
+      const b = getTxBranch(t);
+      if (b?.trim()) set.add(b.trim());
+    });
+    return Array.from(set);
+  }, [branches, userRoles, allTransactions, cashierBranchMap]);
+
   const transactions = useMemo(() => {
     if (role === "cashier") {
       const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
@@ -204,8 +265,11 @@ function SoldProductsDetail() {
         return false;
       });
     }
+    if (role === "admin" && selectedBranch !== "all") {
+      return allTransactions.filter((t: any) => branchMatch(getTxBranch(t), selectedBranch));
+    }
     return allTransactions;
-  }, [allTransactions, role, branchName, user?.id, cashierBranchMap]);
+  }, [allTransactions, role, branchName, user?.id, cashierBranchMap, selectedBranch]);
   const items = data?.items ?? [];
   const products = data?.products ?? [];
 
@@ -347,18 +411,52 @@ function SoldProductsDetail() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link to="/dashboard">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
             </Button>
           </Link>
-          <h1 className="text-xl font-bold">Detail Produk Terjual</h1>
+          <div>
+            <h1 className="text-xl font-bold">Detail Produk Terjual</h1>
+            {role === "admin" && selectedBranch !== "all" && (
+              <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
+                <Store className="h-3.5 w-3.5" />
+                Cabang: <span className="font-semibold">{selectedBranch}</span>
+              </p>
+            )}
+            {role === "cashier" && (
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                <Store className="h-3.5 w-3.5" />
+                Cabang: <span className="font-medium">{branchName || "Cabang Kasir"}</span>
+              </p>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Branch Filter for Admin */}
+          {role === "admin" && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</span>
+              <Select value={selectedBranch} onValueChange={(v) => handleBranchChange(v)}>
+                <SelectTrigger className="w-[150px] h-9 text-xs">
+                  <SelectValue placeholder="Pilih Cabang" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="font-medium">Semua Cabang</span>
+                  </SelectItem>
+                  {branchOptions.map((b) => (
+                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <span className="text-xs text-muted-foreground">Filter Waktu:</span>
           <Select value={dateFilter} onValueChange={handleDateFilterChange}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-[150px] h-9 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
