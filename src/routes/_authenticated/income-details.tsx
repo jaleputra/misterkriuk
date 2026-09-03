@@ -37,7 +37,11 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 });
 
 function IncomeDetails() {
-  const { role } = useAuth();
+  const { role: rawRole, user, branchName } = useAuth();
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const role: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
   const searchParams = Route.useSearch();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">(
     searchParams.dateFilter || "14"
@@ -48,6 +52,35 @@ function IncomeDetails() {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "cash" | "qris">("all");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  const { data: userRoles = [] } = useQuery({
+    queryKey: ["user_roles_branch_map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
+      return data ?? [];
+    },
+  });
+
+  const cashierBranchMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    userRoles.forEach((ur: any) => {
+      if (ur.user_id && ur.branch_name) {
+        map[ur.user_id] = ur.branch_name;
+      }
+    });
+    return map;
+  }, [userRoles]);
+
+  const branchMatch = (b1?: string | null, b2?: string | null) => {
+    if (!b1 || !b2) return false;
+    return b1.trim().toLowerCase() === b2.trim().toLowerCase();
+  };
+
+  const getTxBranch = (t: any) => {
+    if (t.branch_name?.trim()) return t.branch_name.trim();
+    if (t.cashier_id && cashierBranchMap[t.cashier_id]) return cashierBranchMap[t.cashier_id];
+    return null;
+  };
 
   const customRange = !!(fromDate && toDate);
 
@@ -117,6 +150,18 @@ function IncomeDetails() {
 
   const txs = useMemo(() => {
     let filtered = allTxs;
+
+    // Filter by branch for cashier
+    if (role === "cashier") {
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      filtered = filtered.filter((t: any) => {
+        if (user?.id && t.cashier_id === user.id) return true;
+        const b = getTxBranch(t);
+        if (myBranch && b) return branchMatch(b, myBranch);
+        return false;
+      });
+    }
+
     if (saleCategoryFilter === "partner") {
       filtered = filtered.filter((t) => t.sale_category === "partner");
     } else if (saleCategoryFilter === "regular") {

@@ -43,9 +43,12 @@ function AuthedLayout() {
     );
   }
 
-  const effectiveRole = role || "admin";
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const effectiveRole: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : role || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
 
-  // Cashier route guard: allow transaction, warehouse, expense-details, settings, dashboard, income-details, reports
+  // Cashier route guard: allow transaction, warehouse, expense-details, settings, dashboard, income-details, reports, sold-products
   const allowedCashierRoutes = [
     "/transaction",
     "/warehouse",
@@ -53,7 +56,8 @@ function AuthedLayout() {
     "/settings",
     "/dashboard",
     "/income-details",
-    "/reports"
+    "/reports",
+    "/sold-products"
   ];
   const isAllowed = allowedCashierRoutes.some((route) => pathname.startsWith(route));
   if (effectiveRole === "cashier" && !isAllowed) {

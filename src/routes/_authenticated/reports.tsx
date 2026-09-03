@@ -37,9 +37,14 @@ export const Route = createFileRoute("/_authenticated/reports")({
 });
 
 function ReportsPage() {
-  const { role, branchName, loading, user } = useAuth();
+  const { role: rawRole, branchName, loading, user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const role: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
 
   const getLocalDateStr = (d = new Date()) => {
     const year = d.getFullYear();
@@ -62,6 +67,10 @@ function ReportsPage() {
       navigate({ to: "/dashboard" });
     }
   }, [role, loading, navigate]);
+
+  if (loading) {
+    return <div className="p-8 text-center text-muted-foreground text-sm">Memuat laporan...</div>;
+  }
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
@@ -210,6 +219,12 @@ function ReportsPage() {
     return null;
   };
 
+  const getReportBranch = (r: any) => {
+    if (r.branch_name?.trim()) return r.branch_name.trim();
+    if (r.created_by && cashierBranchMap[r.created_by]) return cashierBranchMap[r.created_by];
+    return null;
+  };
+
   // State untuk memilih cabang yang akan diinputkan kas awal oleh Admin
   const [adminInputBranch, setAdminInputBranch] = useState<string>("");
   const activeAdminInputBranch = adminInputBranch || (selectedBranch !== "all" ? selectedBranch : (branchOptions[0] || ""));
@@ -224,21 +239,19 @@ function ReportsPage() {
   // Laporan yang relevan dengan form input saat ini
   const currentFormReport = useMemo(() => {
     if (role === "cashier") {
-      return (dailyReports as any[]).find(
-        (r) =>
-          branchMatch(r.branch_name, branchName) ||
-          (user?.id && r.created_by === user.id) ||
-          (!r.branch_name && (dailyReports as any[]).length === 1),
-      );
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      return (dailyReports as any[]).find((r) => {
+        if (user?.id && r.created_by === user.id) return true;
+        const rb = getReportBranch(r);
+        if (myBranch && rb) return branchMatch(rb, myBranch);
+        return false;
+      });
     }
-    return (dailyReports as any[]).find(
-      (r) =>
-        branchMatch(r.branch_name, activeAdminInputBranch) ||
-        (!r.branch_name &&
-          (dailyReports as any[]).length === 1 &&
-          (branchOptions.length <= 1 || branchMatch(activeAdminInputBranch, branchOptions[0]))),
-    );
-  }, [dailyReports, role, branchName, activeAdminInputBranch, user?.id, branchOptions]);
+    return (dailyReports as any[]).find((r) => {
+      const rb = getReportBranch(r);
+      return branchMatch(rb, activeAdminInputBranch);
+    });
+  }, [dailyReports, role, branchName, activeAdminInputBranch, user?.id, branchOptions, cashierBranchMap]);
 
   const isInitialCashLocked = currentFormReport?.initial_cash != null;
 
@@ -254,22 +267,32 @@ function ReportsPage() {
   // Filter transaksi berdasarkan role dan pilihan cabang
   const filteredTxs = useMemo(() => {
     if (role === "cashier") {
-      if (!branchName) return txs as any[];
-      return (txs as any[]).filter((t) => branchMatch(getTxBranch(t), branchName));
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      return (txs as any[]).filter((t) => {
+        if (user?.id && t.cashier_id === user.id) return true;
+        const tb = getTxBranch(t);
+        if (myBranch && tb) return branchMatch(tb, myBranch);
+        return false;
+      });
     }
     if (selectedBranch === "all") return txs as any[];
     return (txs as any[]).filter((t) => branchMatch(getTxBranch(t), selectedBranch));
-  }, [txs, role, branchName, selectedBranch, cashierBranchMap]);
+  }, [txs, role, branchName, selectedBranch, cashierBranchMap, user?.id]);
 
   // Filter pengeluaran berdasarkan role dan pilihan cabang
   const filteredEntries = useMemo(() => {
     if (role === "cashier") {
-      if (!branchName) return entries as any[];
-      return (entries as any[]).filter((e) => branchMatch(getEntryBranch(e), branchName));
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      return (entries as any[]).filter((e) => {
+        if (user?.id && e.created_by === user.id) return true;
+        const eb = getEntryBranch(e);
+        if (myBranch && eb) return branchMatch(eb, myBranch);
+        return false;
+      });
     }
     if (selectedBranch === "all") return entries as any[];
     return (entries as any[]).filter((e) => branchMatch(getEntryBranch(e), selectedBranch));
-  }, [entries, role, branchName, selectedBranch, cashierBranchMap]);
+  }, [entries, role, branchName, selectedBranch, cashierBranchMap, user?.id]);
 
   // Transaksi partner dipisah dari laporan harian
   const partnerTxs = useMemo(
@@ -370,27 +393,25 @@ function ReportsPage() {
   // Kas Awal sesuai filter yang dipilih
   const initialCash = useMemo(() => {
     if (role === "cashier") {
-      const rep = (dailyReports as any[]).find(
-        (r) =>
-          branchMatch(r.branch_name, branchName) ||
-          (user?.id && r.created_by === user.id) ||
-          (!r.branch_name && (dailyReports as any[]).length === 1),
-      );
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      const rep = (dailyReports as any[]).find((r) => {
+        if (user?.id && r.created_by === user.id) return true;
+        const rb = getReportBranch(r);
+        if (myBranch && rb) return branchMatch(rb, myBranch);
+        return false;
+      });
       return Number(rep?.initial_cash ?? 0);
     }
     if (selectedBranch !== "all") {
-      const rep = (dailyReports as any[]).find(
-        (r) =>
-          branchMatch(r.branch_name, selectedBranch) ||
-          (!r.branch_name &&
-            (dailyReports as any[]).length === 1 &&
-            (branchOptions.length <= 1 || branchMatch(selectedBranch, branchOptions[0]))),
-      );
+      const rep = (dailyReports as any[]).find((r) => {
+        const rb = getReportBranch(r);
+        return branchMatch(rb, selectedBranch);
+      });
       return Number(rep?.initial_cash ?? 0);
     }
     // Semua Cabang: akumulasikan kas awal dari semua cabang
     return (dailyReports as any[]).reduce((sum: number, r: any) => sum + Number(r.initial_cash ?? 0), 0);
-  }, [dailyReports, role, branchName, selectedBranch, user?.id, branchOptions]);
+  }, [dailyReports, role, branchName, selectedBranch, user?.id, branchOptions, cashierBranchMap]);
 
   const todayResult = initialCash + totalIn - totalOut;
   const totalCashResult = initialCash + cashIn - cashOut;
@@ -399,14 +420,21 @@ function ReportsPage() {
   const save = useMutation({
     mutationFn: async () => {
       const { data: u } = await supabase.auth.getUser();
-      const targetBranch = role === "cashier" ? (branchName || null) : (activeAdminInputBranch || null);
+      const targetBranch = role === "cashier" ? (branchName || cashierBranchMap[u.user?.id || ""] || null) : (activeAdminInputBranch || null);
       if (role === "admin" && !targetBranch) {
         throw new Error("Admin wajib memilih cabang untuk menyimpan kas awal!");
       }
 
-      const existing = (dailyReports as any[]).find(
-        (r) => branchMatch(r.branch_name, targetBranch) || (!r.branch_name && !targetBranch),
-      );
+      const existing = (dailyReports as any[]).find((r) => {
+        if (role === "cashier") {
+          if (u.user?.id && r.created_by === u.user.id) return true;
+          const rb = getReportBranch(r);
+          if (targetBranch && rb) return branchMatch(rb, targetBranch);
+          return false;
+        }
+        const rb = getReportBranch(r);
+        return branchMatch(rb, targetBranch);
+      });
 
       const isLocked = existing?.initial_cash != null;
       if (isLocked && role === "cashier") {
@@ -451,12 +479,18 @@ function ReportsPage() {
       try {
         const localKey = `app_daily_reports_${date}`;
         const prev: any[] = JSON.parse(localStorage.getItem(localKey) || "[]");
-        const filtered = prev.filter((p: any) => !branchMatch(p.branch_name, targetBranch));
+        const filtered = prev.filter((p: any) => {
+          if (u.user?.id && p.created_by === u.user.id) return false;
+          const pb = getReportBranch(p);
+          if (targetBranch && pb && branchMatch(pb, targetBranch)) return false;
+          return true;
+        });
         filtered.push({
           report_date: date,
           branch_name: targetBranch,
           initial_cash: cashVal,
           note: role === "admin" ? (note || null) : null,
+          created_by: u.user?.id,
         });
         localStorage.setItem(localKey, JSON.stringify(filtered));
       } catch {}

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/supabase-paginate";
@@ -27,7 +27,11 @@ export const Route = createFileRoute("/_authenticated/warehouse")({
 
 function WarehousePage() {
   const qc = useQueryClient();
-  const { role, branchName } = useAuth();
+  const { role: rawRole, branchName, user } = useAuth();
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const role: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("all");
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -89,6 +93,35 @@ function WarehousePage() {
     },
   });
 
+  const { data: userRoles = [] } = useQuery({
+    queryKey: ["user_roles_branch_map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
+      return data ?? [];
+    },
+  });
+
+  const cashierBranchMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    userRoles.forEach((ur: any) => {
+      if (ur.user_id && ur.branch_name) {
+        map[ur.user_id] = ur.branch_name;
+      }
+    });
+    return map;
+  }, [userRoles]);
+
+  const branchMatch = (b1?: string | null, b2?: string | null) => {
+    if (!b1 || !b2) return false;
+    return b1.trim().toLowerCase() === b2.trim().toLowerCase();
+  };
+
+  const getEntryBranch = (e: any) => {
+    if (e.branch_name?.trim()) return e.branch_name.trim();
+    if (e.created_by && cashierBranchMap[e.created_by]) return cashierBranchMap[e.created_by];
+    return null;
+  };
+
   type DraftLine = { product_name: string; quantity: string; initial_price: string };
   const emptyLine = (): DraftLine => ({ product_name: "", quantity: "", initial_price: "" });
   const [restockDate, setRestockDate] = useState(new Date().toISOString().slice(0, 10));
@@ -103,9 +136,20 @@ function WarehousePage() {
   const [search, setSearch] = useState("");
 
   const filteredEntries = (() => {
+    let list = entries as any[];
+    if (role === "cashier") {
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      list = list.filter((e) => {
+        if (user?.id && e.created_by === user.id) return true;
+        const eb = getEntryBranch(e);
+        if (myBranch && eb) return branchMatch(eb, myBranch);
+        return false;
+      });
+    }
+
     const term = search.trim().toLocaleLowerCase("id-ID");
-    if (term.length < 3) return entries as any[];
-    return (entries as any[]).filter((entry) => {
+    if (term.length < 3) return list;
+    return list.filter((entry) => {
       const names = entry.stock_movements
         .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
         .join(" ");

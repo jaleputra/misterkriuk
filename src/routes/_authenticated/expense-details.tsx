@@ -33,7 +33,11 @@ export const Route = createFileRoute("/_authenticated/expense-details")({
 
 function ExpenseDetails() {
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { role: rawRole, user, branchName } = useAuth();
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const role: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
   const searchParams = Route.useSearch();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">(
     searchParams.dateFilter || "14"
@@ -44,6 +48,35 @@ function ExpenseDetails() {
   const [search, setSearch] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  const { data: userRoles = [] } = useQuery({
+    queryKey: ["user_roles_branch_map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
+      return data ?? [];
+    },
+  });
+
+  const cashierBranchMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    userRoles.forEach((ur: any) => {
+      if (ur.user_id && ur.branch_name) {
+        map[ur.user_id] = ur.branch_name;
+      }
+    });
+    return map;
+  }, [userRoles]);
+
+  const branchMatch = (b1?: string | null, b2?: string | null) => {
+    if (!b1 || !b2) return false;
+    return b1.trim().toLowerCase() === b2.trim().toLowerCase();
+  };
+
+  const getEntryBranch = (e: any) => {
+    if (e.branch_name?.trim()) return e.branch_name.trim();
+    if (e.created_by && cashierBranchMap[e.created_by]) return cashierBranchMap[e.created_by];
+    return null;
+  };
 
   const { data } = useQuery({
     queryKey: ["expense-details", dateFilter, fromDate, toDate],
@@ -120,6 +153,18 @@ function ExpenseDetails() {
 
   const filteredEntries = useMemo(() => {
     let result = allEntries;
+
+    // Filter by branch for cashier
+    if (role === "cashier") {
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      result = result.filter((e: any) => {
+        if (user?.id && e.created_by === user.id) return true;
+        const eb = getEntryBranch(e);
+        if (myBranch && eb) return branchMatch(eb, myBranch);
+        return false;
+      });
+    }
+
     if (typeFilter === "restock") {
       result = result.filter((e: any) => e.entry_type === "restock");
     } else if (typeFilter === "expense") {

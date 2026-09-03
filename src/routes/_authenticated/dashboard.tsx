@@ -53,17 +53,28 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { role, branchName } = useAuth();
+  const { role: rawRole, branchName, loading, user } = useAuth();
+
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const role: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
 
   useEffect(() => {
-    if (role === "cashier") {
+    if (!loading && role === "cashier") {
       navigate({ to: "/income-details", replace: true, search: { dateFilter: "today", fromDate: undefined, toDate: undefined } });
     }
-  }, [role, navigate]);
+  }, [role, loading, navigate]);
+
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">("14");
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
   const customRange = !!(fromDate && toDate);
+
+  if (loading) {
+    return <div className="p-8 text-center text-muted-foreground text-sm">Memuat dashboard...</div>;
+  }
+
 
   // Filter Cabang (Hanya untuk Admin)
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
@@ -233,9 +244,17 @@ function Dashboard() {
     return rawTxs
       .filter((t) => !deletedTxIds.includes(t.id))
       .filter((t) => {
-        if (role !== "admin" || selectedBranch === "all") return true;
+        if (role === "admin") {
+          if (selectedBranch === "all") return true;
+          const b = getTxBranch(t);
+          return branchMatch(b, selectedBranch);
+        }
+        // Cashier: strictly lock to cashier's assigned branch or cashier user_id
+        const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+        if (user?.id && t.cashier_id === user.id) return true;
         const b = getTxBranch(t);
-        return branchMatch(b, selectedBranch);
+        if (myBranch && b) return branchMatch(b, myBranch);
+        return false;
       })
       .map((t) => {
         if (localEditedTxs[t.id]) {
@@ -243,7 +262,7 @@ function Dashboard() {
         }
         return t;
       });
-  }, [data?.transactions, deletedTxIds, localEditedTxs, role, selectedBranch, cashierBranchMap]);
+  }, [data?.transactions, deletedTxIds, localEditedTxs, role, selectedBranch, cashierBranchMap, branchName, user?.id]);
 
   const items = data?.items ?? [];
   const products = data?.products ?? [];
@@ -464,16 +483,34 @@ function Dashboard() {
   // Filter stock entries based on selectedBranch
   const filteredStockEntries = useMemo(() => {
     const raw = stockEntries;
-    if (role !== "admin" || selectedBranch === "all") return raw;
-    return raw.filter((e: any) => branchMatch(getEntryBranch(e), selectedBranch));
-  }, [stockEntries, role, selectedBranch, cashierBranchMap]);
+    if (role === "admin") {
+      if (selectedBranch === "all") return raw;
+      return raw.filter((e: any) => branchMatch(getEntryBranch(e), selectedBranch));
+    }
+    const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+    return raw.filter((e: any) => {
+      if (user?.id && e.created_by === user.id) return true;
+      const eb = getEntryBranch(e);
+      if (myBranch && eb) return branchMatch(eb, myBranch);
+      return false;
+    });
+  }, [stockEntries, role, selectedBranch, cashierBranchMap, branchName, user?.id]);
 
   // Filter all restock entries based on selectedBranch
   const filteredAllRestockEntries = useMemo(() => {
     const raw = allRestockEntries;
-    if (role !== "admin" || selectedBranch === "all") return raw;
-    return raw.filter((e: any) => branchMatch(getEntryBranch(e), selectedBranch));
-  }, [allRestockEntries, role, selectedBranch, cashierBranchMap]);
+    if (role === "admin") {
+      if (selectedBranch === "all") return raw;
+      return raw.filter((e: any) => branchMatch(getEntryBranch(e), selectedBranch));
+    }
+    const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+    return raw.filter((e: any) => {
+      if (user?.id && e.created_by === user.id) return true;
+      const eb = getEntryBranch(e);
+      if (myBranch && eb) return branchMatch(eb, myBranch);
+      return false;
+    });
+  }, [allRestockEntries, role, selectedBranch, cashierBranchMap, branchName, user?.id]);
 
   // Pengeluaran (tanpa restok — restok dihitung terpisah secara keseluruhan)
   const expenseEntries = useMemo(

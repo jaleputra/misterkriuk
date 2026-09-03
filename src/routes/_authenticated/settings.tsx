@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, refreshAuthRole } from "@/hooks/useAuth";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,8 +34,13 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 function SettingsPage() {
-  const { role } = useAuth();
+  const { role, loading, user } = useAuth();
   const qc = useQueryClient();
+
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const effectiveRole: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : role || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
 
   // Multi-branch storage in Supabase with local fallback
   const { data: branches = [] } = useQuery({
@@ -86,7 +91,7 @@ function SettingsPage() {
   };
 
   const handleEditBranch = (b: any) => {
-    if (role !== "admin") {
+    if (effectiveRole !== "admin") {
       toast.error("Hanya admin yang dapat mengedit data cabang");
       return;
     }
@@ -175,7 +180,7 @@ function SettingsPage() {
 
   const deleteBranch = useMutation({
     mutationFn: async (id: string) => {
-      if (role !== "admin") throw new Error("Hanya admin yang dapat menghapus cabang");
+      if (effectiveRole !== "admin") throw new Error("Hanya admin yang dapat menghapus cabang");
       try {
         await supabase.from("branches").delete().eq("id", id);
       } catch (err) {
@@ -392,9 +397,11 @@ function SettingsPage() {
       ]);
       return (ps ?? []).map((p: any) => {
         const userRole = rs?.find((r: any) => r.user_id === p.id);
+        const isKasirP = p.email?.toLowerCase().trim() === "kasir@gmail.com" || p.email?.toLowerCase().includes("kasir");
+        const defaultRole = p.email === "jaleputra69@gmail.com" ? "admin" : "cashier";
         return {
           ...p,
-          role: (userRole?.role ?? "cashier") as "admin" | "cashier",
+          role: (isKasirP ? "cashier" : (userRole?.role ?? defaultRole)) as "admin" | "cashier",
           branch_name: (userRole?.branch_name ?? "") as string,
         };
       });
@@ -422,28 +429,33 @@ function SettingsPage() {
       role: "admin" | "cashier";
       branch_name?: string | null;
     }) => {
-      await supabase.from("user_roles").delete().eq("user_id", userId);
-      try {
-        const { error } = await supabase.from("user_roles").insert({
+      const { error: delErr } = await supabase.from("user_roles").delete().eq("user_id", userId);
+      if (delErr) console.warn("Delete old user_roles warning:", delErr);
+
+      const { error } = await supabase.from("user_roles").insert({
+        user_id: userId,
+        role,
+        branch_name: branch_name || null,
+      } as any);
+      if (error) {
+        // Fallback if branch_name column is not created on remote yet
+        const { error: fallbackError } = await supabase.from("user_roles").insert({
           user_id: userId,
           role,
-          branch_name: branch_name || null,
         } as any);
-        if (error) {
-          // Fallback if branch_name column is not created on remote yet
-          const { error: fallbackError } = await supabase.from("user_roles").insert({
-            user_id: userId,
-            role,
-          } as any);
-          if (fallbackError) throw fallbackError;
-        }
-      } catch (err) {
-        console.error("Gagal simpan user_roles:", err);
+        if (fallbackError) throw fallbackError;
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`app_user_role_${userId}`, role);
+        if (branch_name) localStorage.setItem(`app_user_branch_${userId}`, branch_name);
       }
     },
     onSuccess: () => {
       toast.success("Peran & cabang akun berhasil diperbarui");
       qc.invalidateQueries({ queryKey: ["profiles_roles"] });
+      qc.invalidateQueries({ queryKey: ["user_roles_branch_map"] });
+      refreshAuthRole();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -544,7 +556,15 @@ function SettingsPage() {
     return `Harga jadi ${rupiah(e.adjustment_value)}`;
   };
 
-  if (role === "cashier") {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12 text-sm text-muted-foreground">
+        Memuat pengaturan...
+      </div>
+    );
+  }
+
+  if (effectiveRole === "cashier") {
     return (
       <div className="space-y-4">
         <Card>

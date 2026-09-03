@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Search } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/sold-products")({
   validateSearch: (search: Record<string, unknown>) => {
@@ -34,6 +35,41 @@ const getCategoryDisplayName = (cat: string) => {
 
 function SoldProductsDetail() {
   const navigate = useNavigate({ from: Route.fullPath });
+  const { role: rawRole, user, branchName } = useAuth();
+  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const role: "admin" | "cashier" = isExplicitKasir
+    ? "cashier"
+    : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
+
+  const { data: userRoles = [] } = useQuery({
+    queryKey: ["user_roles_branch_map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
+      return data ?? [];
+    },
+  });
+
+  const cashierBranchMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    userRoles.forEach((ur: any) => {
+      if (ur.user_id && ur.branch_name) {
+        map[ur.user_id] = ur.branch_name;
+      }
+    });
+    return map;
+  }, [userRoles]);
+
+  const branchMatch = (b1?: string | null, b2?: string | null) => {
+    if (!b1 || !b2) return false;
+    return b1.trim().toLowerCase() === b2.trim().toLowerCase();
+  };
+
+  const getTxBranch = (t: any) => {
+    if (t.branch_name?.trim()) return t.branch_name.trim();
+    if (t.cashier_id && cashierBranchMap[t.cashier_id]) return cashierBranchMap[t.cashier_id];
+    return null;
+  };
+
   const searchParams = Route.useSearch();
   const dateFilter = searchParams.dateFilter || "14";
   const [fromDate, setFromDate] = useState(searchParams.fromDate || "");
@@ -157,7 +193,19 @@ function SoldProductsDetail() {
     refetchInterval: 30000,
   });
 
-  const transactions = data?.transactions ?? [];
+  const allTransactions = data?.transactions ?? [];
+  const transactions = useMemo(() => {
+    if (role === "cashier") {
+      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
+      return allTransactions.filter((t: any) => {
+        if (user?.id && t.cashier_id === user.id) return true;
+        const b = getTxBranch(t);
+        if (myBranch && b) return branchMatch(b, myBranch);
+        return false;
+      });
+    }
+    return allTransactions;
+  }, [allTransactions, role, branchName, user?.id, cashierBranchMap]);
   const items = data?.items ?? [];
   const products = data?.products ?? [];
 
