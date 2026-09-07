@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   MapPin,
@@ -21,12 +22,15 @@ import {
   getBranchLocations,
   getBranchLocation,
   calculateDistanceMeters,
+  isCashierWithinBranchRadius,
+  loadBranchLocationsFromSupabase,
   recordAttendance,
   hasCashierCheckedInToday,
   getTodayAttendance,
   type AttendanceRecord,
   type BranchLocationConfig,
 } from "@/lib/attendance";
+import { AttendanceLocationPickerMap } from "@/components/AttendanceLocationPickerMap";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -63,7 +67,30 @@ function CashierAttendancePage() {
     },
   });
 
-  const branchLocations = getBranchLocations();
+  const [branchVersion, setBranchVersion] = useState(0);
+
+  // Muat lokasi cabang terbaru dari Supabase saat halaman absensi dibuka
+  useEffect(() => {
+    loadBranchLocationsFromSupabase().then(() => {
+      setBranchVersion((v) => v + 1);
+    });
+
+    const handleSync = () => {
+      setBranchVersion((v) => v + 1);
+    };
+    window.addEventListener("branch_location_updated", handleSync);
+    window.addEventListener("attendance_updated", handleSync);
+    window.addEventListener("storage", handleSync);
+    return () => {
+      window.removeEventListener("branch_location_updated", handleSync);
+      window.removeEventListener("attendance_updated", handleSync);
+      window.removeEventListener("storage", handleSync);
+    };
+  }, []);
+
+  const branchLocations = useMemo(() => {
+    return getBranchLocations();
+  }, [branchVersion]);
 
   const availableBranchNames = useMemo(() => {
     const list = new Set<string>();
@@ -93,7 +120,8 @@ function CashierAttendancePage() {
     return availableBranchNames[0] || "Cabang 1";
   }, [branchName, user?.id, user?.email, availableBranchNames]);
 
-  const selectedBranch = assignedBranch;
+  const [selectedBranchOverride, setSelectedBranchOverride] = useState<string>("");
+  const selectedBranch = selectedBranchOverride || assignedBranch;
 
   // GPS State
   const [coords, setCoords] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
@@ -108,26 +136,26 @@ function CashierAttendancePage() {
 
   const isCheckedIn = !!todayAtt;
 
-  // Konfigurasi cabang yang aktif
+  // Konfigurasi cabang yang aktif (selalu terupdate saat ada perubahan titik di tab settings)
   const currentBranchConfig: BranchLocationConfig = useMemo(() => {
     return getBranchLocation(selectedBranch);
-  }, [selectedBranch]);
+  }, [selectedBranch, branchVersion]);
 
-  // Hitung jarak kasir ke titik cabang
-  const distanceToBranch = useMemo(() => {
-    if (!coords) return null;
-    return calculateDistanceMeters(
+  // Hitung jarak kasir ke titik cabang dengan memperhitungkan toleransi akurasi GPS perangkat
+  const radiusCheck = useMemo(() => {
+    if (!coords) return { isWithin: false, distance: null, effectiveDistance: null };
+    return isCashierWithinBranchRadius(
       coords.latitude,
       coords.longitude,
       currentBranchConfig.latitude,
-      currentBranchConfig.longitude
+      currentBranchConfig.longitude,
+      currentBranchConfig.radius_meters,
+      coords.accuracy
     );
   }, [coords, currentBranchConfig]);
 
-  const isWithinRadius = useMemo(() => {
-    if (distanceToBranch === null) return false;
-    return distanceToBranch <= currentBranchConfig.radius_meters;
-  }, [distanceToBranch, currentBranchConfig.radius_meters]);
+  const distanceToBranch = radiusCheck.distance;
+  const isWithinRadius = radiusCheck.isWithin;
 
   // Fungsi deteksi GPS
   const detectLocation = () => {
@@ -215,15 +243,6 @@ function CashierAttendancePage() {
       setSubmitting(false);
     }
   };
-
-  // OpenStreetMap embed URL
-  const mapEmbedUrl = useMemo(() => {
-    const lat = coords?.latitude ?? currentBranchConfig.latitude;
-    const lng = coords?.longitude ?? currentBranchConfig.longitude;
-    const delta = 0.003;
-    const bbox = `${lng - delta}%2C${lat - delta}%2C${lng + delta}%2C${lat + delta}`;
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
-  }, [coords, currentBranchConfig]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-5 pb-8">
@@ -315,7 +334,7 @@ function CashierAttendancePage() {
       {/* FORM ABSEN KASIR */}
       {(!isCheckedIn || role === "admin") && (
         <div className="space-y-4">
-          {/* Info Cabang Penugasan (Otomatis Sesuai Pengaturan Akun) */}
+          {/* Info Cabang Penugasan (Otomatis Sesuai Pengaturan Akun & Bisa Dipilih) */}
           <Card className="border-border/80 shadow-xs bg-card/80">
             <CardContent className="p-3.5 sm:p-4 space-y-3 text-xs">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -324,28 +343,57 @@ function CashierAttendancePage() {
                     <Store className="h-4 w-4" />
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Cabang Penugasan Anda:</span>
-                    <span className="font-bold text-sm text-foreground">{assignedBranch}</span>
+                    <span className="text-[11px] text-muted-foreground block">Cabang Toko Absensi:</span>
+                    {availableBranchNames.length > 1 ? (
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Select
+                          value={selectedBranch}
+                          onValueChange={(val) => {
+                            setSelectedBranchOverride(val);
+                            if (user?.id && typeof window !== "undefined") {
+                              localStorage.setItem(`app_user_branch_${user.id}`, val);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-7 text-xs font-bold w-[160px] bg-background">
+                            <SelectValue placeholder="Pilih Cabang" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableBranchNames.map((b) => (
+                              <SelectItem key={b} value={b} className="text-xs">
+                                {b}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <span className="font-bold text-sm text-foreground">{selectedBranch}</span>
+                    )}
                   </div>
                 </div>
                 <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-[11px] font-medium">
-                  Tersinkronisasi Akun
+                  {selectedBranchOverride ? "Cabang Dipilih" : "Tersinkronisasi Akun"}
                 </Badge>
               </div>
 
-              {/* Titik Lokasi Target Cabang */}
+              {/* Titik Lokasi Target Cabang (Sesuai yang disetel di Map Settings) */}
               <div className="bg-muted/40 p-3 rounded-lg border border-border/60 space-y-1.5 text-muted-foreground">
                 <div className="flex justify-between items-center text-foreground font-medium text-[11px]">
-                  <span>Titik Target Absen {assignedBranch}:</span>
-                  <Badge variant="secondary" className="text-[10px]">
-                    Radius: {currentBranchConfig.radius_meters}m
+                  <span className="font-bold text-primary flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5" /> Titik Target Absen {selectedBranch}:
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] font-semibold">
+                    Radius Toleransi: {currentBranchConfig.radius_meters}m
                   </Badge>
                 </div>
-                <div className="font-mono text-[11px]">
-                  {currentBranchConfig.latitude.toFixed(6)}, {currentBranchConfig.longitude.toFixed(6)}
+                <div className="font-mono text-[11px] text-foreground font-semibold">
+                  Lat: {currentBranchConfig.latitude.toFixed(6)}, Lng: {currentBranchConfig.longitude.toFixed(6)}
                 </div>
                 {currentBranchConfig.address && (
-                  <p className="text-[11px] text-muted-foreground/80">{currentBranchConfig.address}</p>
+                  <p className="text-[11px] text-muted-foreground/80 truncate">
+                    📍 {currentBranchConfig.address}
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -361,7 +409,7 @@ function CashierAttendancePage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs px-2.5"
+                className="h-7 text-xs px-2.5 cursor-pointer"
                 disabled={geoLoading}
                 onClick={detectLocation}
               >
@@ -376,7 +424,7 @@ function CashierAttendancePage() {
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <span>{geoError}</span>
                   </div>
-                  <Button size="sm" variant="outline" className="h-7 text-xs bg-background" onClick={detectLocation}>
+                  <Button size="sm" variant="outline" className="h-7 text-xs bg-background cursor-pointer" onClick={detectLocation}>
                     Coba Deteksi Ulang
                   </Button>
                 </div>
@@ -384,13 +432,13 @@ function CashierAttendancePage() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-2 bg-muted/40 p-3 rounded-lg border border-border/60">
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">Koordinat Terdeteksi:</span>
+                      <span className="text-muted-foreground block text-[11px]">Koordinat Anda:</span>
                       <span className="font-mono font-medium text-foreground text-[11px]">
                         {coords.latitude.toFixed(6)}, {coords.longitude.toFixed(6)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">Akurasi GPS:</span>
+                      <span className="text-muted-foreground block text-[11px]">Akurasi GPS Perangkat:</span>
                       <span className="font-medium text-foreground text-[11px]">
                         ±{coords.accuracy ?? 10} meter
                       </span>
@@ -414,13 +462,13 @@ function CashierAttendancePage() {
                       <div className="space-y-1">
                         <div className="font-bold text-sm">
                           {isWithinRadius
-                            ? "Lokasi Valid (Di Dalam Titik Cabang)"
+                            ? "Lokasi Valid (Di Dalam Radius Titik Toko)"
                             : "Di Luar Titik Cabang Toko"}
                         </div>
                         <p className="text-xs leading-relaxed opacity-90">
                           {isWithinRadius
-                            ? `Jarak Anda ke ${selectedBranch} adalah ${distanceToBranch} meter (toleransi maks: ${currentBranchConfig.radius_meters}m). Anda dapat langsung absen.`
-                            : `Jarak Anda ke ${selectedBranch} adalah ${distanceToBranch} meter. Anda harus berada dalam radius ${currentBranchConfig.radius_meters} meter dari cabang untuk absen.`}
+                            ? `Jarak Anda ke ${selectedBranch} adalah ${distanceToBranch} meter (toleransi maks: ${currentBranchConfig.radius_meters}m). Anda siap melakukan absen.`
+                            : `Jarak Anda ke ${selectedBranch} adalah ${distanceToBranch} meter. Anda harus berada dalam radius ${currentBranchConfig.radius_meters} meter dari titik toko untuk absen.`}
                         </p>
                       </div>
                     </div>
@@ -433,28 +481,22 @@ function CashierAttendancePage() {
                 </div>
               )}
 
-              {/* Preview Peta OpenStreetMap */}
+              {/* Peta Interaktif Lengkap & Akurat (Preview Titik Toko & Posisi Kasir) */}
               <div className="space-y-1.5 pt-1">
-                <span className="text-muted-foreground text-[11px] block font-medium">Peta Titik Lokasi:</span>
-                <div className="w-full h-48 sm:h-56 rounded-xl overflow-hidden border border-border/80 bg-muted relative shadow-inner">
-                  <iframe
-                    title="Map Preview Absensi"
-                    src={mapEmbedUrl}
-                    className="w-full h-full border-0"
-                    loading="lazy"
-                  />
-                  <div className="absolute bottom-2 left-2 right-2 bg-card/90 backdrop-blur-xs px-2.5 py-1.5 rounded-lg text-[10px] text-muted-foreground border border-border/60 flex items-center justify-between">
-                    <span>🔴 Titik Lokasi {selectedBranch}</span>
-                    <a
-                      href={`https://www.google.com/maps?q=${currentBranchConfig.latitude},${currentBranchConfig.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary font-medium hover:underline flex items-center gap-0.5"
-                    >
-                      Buka Google Maps
-                    </a>
-                  </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span className="font-medium">Peta Titik Absensi {selectedBranch}:</span>
+                  <span className="text-[10px]">🔴 Toko | 🔵 Posisi Anda</span>
                 </div>
+                <AttendanceLocationPickerMap
+                  latitude={currentBranchConfig.latitude}
+                  longitude={currentBranchConfig.longitude}
+                  radiusMeters={currentBranchConfig.radius_meters}
+                  branchName={selectedBranch}
+                  address={currentBranchConfig.address}
+                  readOnly={true}
+                  cashierCoords={coords}
+                  className="w-full h-56 sm:h-64"
+                />
               </div>
             </CardContent>
           </Card>

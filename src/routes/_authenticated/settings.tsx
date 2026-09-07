@@ -50,6 +50,8 @@ import {
   getBranchLocations,
   getBranchLocation,
   saveBranchLocation,
+  isCashierWithinBranchRadius,
+  loadBranchLocationsFromSupabase,
   getAttendanceRecords,
   clearAttendanceRecords,
   getTodayDateString,
@@ -583,20 +585,20 @@ function SettingsPage() {
     return getBranchLocation(cashierAssignedBranch);
   }, [cashierAssignedBranch]);
 
-  const cashierDistance = useMemo(() => {
-    if (!cashierCoords) return null;
-    return calculateDistanceMeters(
+  const cashierRadiusCheck = useMemo(() => {
+    if (!cashierCoords) return { isWithin: false, distance: null, effectiveDistance: null };
+    return isCashierWithinBranchRadius(
       cashierCoords.latitude,
       cashierCoords.longitude,
       cashierBranchConfig.latitude,
-      cashierBranchConfig.longitude
+      cashierBranchConfig.longitude,
+      cashierBranchConfig.radius_meters,
+      cashierCoords.accuracy
     );
   }, [cashierCoords, cashierBranchConfig]);
 
-  const cashierIsWithinRadius = useMemo(() => {
-    if (cashierDistance === null) return false;
-    return cashierDistance <= cashierBranchConfig.radius_meters;
-  }, [cashierDistance, cashierBranchConfig.radius_meters]);
+  const cashierDistance = cashierRadiusCheck.distance;
+  const cashierIsWithinRadius = cashierRadiusCheck.isWithin;
 
   const detectCashierLocation = () => {
     if (typeof window === "undefined" || !navigator.geolocation) {
@@ -738,6 +740,15 @@ function SettingsPage() {
     }
   };
 
+  // Muat lokasi cabang terbaru dari Supabase saat settings dibuka
+  useEffect(() => {
+    loadBranchLocationsFromSupabase().then((locs) => {
+      if (selectedAttBranch && locs[selectedAttBranch]) {
+        setAttMapForm(locs[selectedAttBranch]);
+      }
+    });
+  }, []);
+
   useEffect(() => {
     if (selectedAttBranch) {
       setAttMapForm(getBranchLocation(selectedAttBranch));
@@ -817,12 +828,19 @@ function SettingsPage() {
       ...attMapForm,
       branch_name: selectedAttBranch,
     });
-    toast.success(`Titik lokasi absensi untuk ${selectedAttBranch} berhasil disimpan!`);
+    toast.success(`Titik lokasi absensi untuk ${selectedAttBranch} berhasil disimpan & disinkronkan!`);
   };
 
   const handleGetAdminCurrentGps = () => {
     if (typeof window === "undefined" || !navigator.geolocation) {
       toast.error("Browser tidak mendukung geolokasi GPS");
+      return;
+    }
+    if (
+      !confirm(
+        `Perhatian: Tombol ini akan menyetel titik toko ${selectedAttBranch} ke posisi GPS Anda saat ini. Gunakan hanya jika Anda sedang berada di lokasi toko fisik cabang!`
+      )
+    ) {
       return;
     }
     setAttGpsLoading(true);

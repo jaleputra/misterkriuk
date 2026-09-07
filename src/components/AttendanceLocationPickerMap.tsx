@@ -8,9 +8,11 @@ import {
   Minimize2,
   Navigation,
   RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { saveBranchLocation, calculateDistanceMeters } from "@/lib/attendance";
 
 interface AttendanceLocationPickerMapProps {
   latitude: number;
@@ -18,7 +20,9 @@ interface AttendanceLocationPickerMapProps {
   radiusMeters: number;
   branchName: string;
   address?: string;
-  onChangeCoordinates: (coords: {
+  readOnly?: boolean;
+  cashierCoords?: { latitude: number; longitude: number; accuracy?: number } | null;
+  onChangeCoordinates?: (coords: {
     latitude: number;
     longitude: number;
     address?: string;
@@ -34,6 +38,8 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
   radiusMeters,
   branchName,
   address,
+  readOnly = false,
+  cashierCoords,
   onChangeCoordinates,
   className = "",
 }) => {
@@ -48,14 +54,22 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLocatingUser, setIsLocatingUser] = useState(false);
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const [detectedUserGps, setDetectedUserGps] = useState<{
+    lat: number;
+    lng: number;
+    accuracy: number;
+    distanceToBranch: number;
+  } | null>(null);
+
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>({
-    lat: latitude || -6.2,
-    lng: longitude || 106.816666,
+    lat: latitude && !isNaN(latitude) ? latitude : -6.2,
+    lng: longitude && !isNaN(longitude) ? longitude : 106.816666,
   });
 
-  // Sinkronisasi koordinat internal saat props latitude / longitude berubah dari luar (misal input text)
+  // Sinkronisasi koordinat internal saat props latitude / longitude berubah dari luar
   useEffect(() => {
-    if (latitude && longitude) {
+    if (latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
       setCurrentCoords({ lat: latitude, lng: longitude });
 
       if (markerRef.current && circleRef.current && mapInstanceRef.current) {
@@ -64,10 +78,9 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
         circleRef.current.setLatLng(newLatLng);
         circleRef.current.setRadius(radiusMeters || 100);
 
-        // Pan map jika jaraknya signifikan
         const curCenter = mapInstanceRef.current.getCenter();
         const dist = curCenter.distanceTo(newLatLng);
-        if (dist > 50) {
+        if (dist > 80) {
           mapInstanceRef.current.panTo(newLatLng, { animate: true });
         }
       }
@@ -81,37 +94,69 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
     }
   }, [radiusMeters]);
 
-  // Buat custom SVG pin icon untuk cabang
+  // Sinkronisasi posisi kasir jika disediakan (misal di halaman Absensi)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const coordsToDisplay = cashierCoords || (detectedUserGps ? {
+      latitude: detectedUserGps.lat,
+      longitude: detectedUserGps.lng,
+      accuracy: detectedUserGps.accuracy,
+    } : null);
+
+    if (coordsToDisplay) {
+      const lat = coordsToDisplay.latitude;
+      const lng = coordsToDisplay.longitude;
+      const acc = coordsToDisplay.accuracy || 10;
+
+      if (userLocationMarkerRef.current) {
+        userLocationMarkerRef.current.setLatLng([lat, lng]);
+      } else {
+        const userMarker = L.marker([lat, lng], {
+          icon: createUserGpsIcon(),
+          zIndexOffset: 1000,
+        })
+          .bindTooltip(`Posisi Anda Saat Ini (Akurasi ±${acc}m)`, {
+            permanent: false,
+            direction: "top",
+          })
+          .addTo(mapInstanceRef.current);
+        userLocationMarkerRef.current = userMarker;
+      }
+    }
+  }, [cashierCoords, detectedUserGps]);
+
+  // Buat custom SVG pin icon untuk titik target cabang
   const createBranchIcon = (name: string) => {
     return L.divIcon({
       className: "custom-branch-marker-container",
       html: `
-        <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); cursor: grab;">
+        <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); cursor: ${readOnly ? "default" : "grab"};">
           <div style="
             background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
             color: white;
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 9999px;
-            font-size: 10px;
-            font-weight: 700;
+            font-size: 11px;
+            font-weight: 800;
             white-space: nowrap;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             border: 1.5px solid #ffffff;
             margin-bottom: 2px;
             display: flex;
             align-items: center;
             gap: 4px;
           ">
-            <span>📍 ${name}</span>
+            <span>📍 Titik Toko: ${name}</span>
           </div>
           <div style="
-            width: 32px;
-            height: 32px;
+            width: 34px;
+            height: 34px;
             background: radial-gradient(circle at 35% 35%, #f87171, #dc2626);
             border-radius: 50% 50% 50% 0;
             transform: rotate(-45deg);
             border: 2.5px solid #ffffff;
-            box-shadow: 0 6px 14px rgba(220, 38, 38, 0.45);
+            box-shadow: 0 6px 16px rgba(220, 38, 38, 0.5);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -127,45 +172,88 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
           <div style="
             width: 14px;
             height: 5px;
-            background: rgba(0,0,0,0.35);
+            background: rgba(0,0,0,0.4);
             border-radius: 50%;
             margin-top: 1px;
             filter: blur(1px);
           "></div>
         </div>
       `,
-      iconSize: [32, 48],
+      iconSize: [34, 52],
       iconAnchor: [0, 0],
     });
   };
 
-  // Buat custom SVG pin icon untuk lokasi GPS admin saat ini
+  // Buat custom SVG pin icon untuk lokasi GPS perangkat
   const createUserGpsIcon = () => {
     return L.divIcon({
       className: "custom-user-gps-marker",
       html: `
-        <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; transform: translate(-50%, -50%);">
+        <div style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -50%);">
           <div style="
             position: absolute;
-            width: 28px;
-            height: 28px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            background: rgba(59, 130, 246, 0.3);
+            background: rgba(37, 99, 235, 0.3);
+            border: 1.5px solid rgba(37, 99, 235, 0.6);
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
           "></div>
           <div style="
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             background: #2563eb;
             border: 2.5px solid #ffffff;
             border-radius: 50%;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            z-index: 10;
           "></div>
+          <div style="
+            position: absolute;
+            top: 20px;
+            background: #1e3a8a;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 9px;
+            font-weight: bold;
+            white-space: nowrap;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            border: 1px solid white;
+          ">
+            Posisi Anda
+          </div>
         </div>
       `,
-      iconSize: [24, 24],
+      iconSize: [36, 36],
       iconAnchor: [0, 0],
     });
+  };
+
+  // Simpan otomatis ke sistem dan database setiap kali titik diubah
+  const autoCommitCoordinates = (lat: number, lng: number, customAddress?: string) => {
+    const formattedLat = Number(lat.toFixed(6));
+    const formattedLng = Number(lng.toFixed(6));
+    const addr = customAddress || address || branchName;
+
+    // Simpan ke storage dan database
+    saveBranchLocation({
+      branch_name: branchName,
+      latitude: formattedLat,
+      longitude: formattedLng,
+      radius_meters: radiusMeters || 100,
+      address: addr,
+    });
+
+    setLastSavedTime(new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+
+    if (onChangeCoordinates) {
+      onChangeCoordinates({
+        latitude: formattedLat,
+        longitude: formattedLng,
+        address: addr,
+      });
+    }
   };
 
   // Fungsi reverse-geocoding via OpenStreetMap Nominatim
@@ -179,31 +267,23 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
       if (res.ok) {
         const data = await res.json();
         if (data?.display_name) {
-          onChangeCoordinates({
-            latitude: Number(lat.toFixed(6)),
-            longitude: Number(lng.toFixed(6)),
-            address: data.display_name,
-          });
+          autoCommitCoordinates(lat, lng, data.display_name);
           return;
         }
       }
     } catch (e) {
-      console.warn("Reverse geocode fetch warning:", e);
+      console.warn("Reverse geocode warning:", e);
     } finally {
       setIsReverseGeocoding(false);
     }
 
-    // Fallback tanpa merubah teks alamat jika fetch gagal
-    onChangeCoordinates({
-      latitude: Number(lat.toFixed(6)),
-      longitude: Number(lng.toFixed(6)),
-    });
+    autoCommitCoordinates(lat, lng);
   };
 
   // Setup Tile Layer
   const getTileLayer = (layerType: MapLayerType) => {
     if (layerType === "hybrid") {
-      // Google Hybrid: Satellite imagery with labels & streets (sangat akurat untuk Indonesia)
+      // Google Hybrid: Satelit dengan label jalan & gedung akurat
       return L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
         maxZoom: 20,
         attribution: "&copy; Google Maps",
@@ -247,76 +327,75 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
     const initialLat = latitude && !isNaN(latitude) ? latitude : -6.2;
     const initialLng = longitude && !isNaN(longitude) ? longitude : 106.816666;
 
-    // Buat map instance
     const map = L.map(mapContainerRef.current, {
       center: [initialLat, initialLng],
       zoom: 17,
-      zoomControl: false, // Tombol zoom kustom
+      zoomControl: false,
       attributionControl: false,
     });
 
-    // Tambahkan base layer
     const baseLayer = getTileLayer(activeLayer);
     baseLayer.addTo(map);
     tileLayerRef.current = baseLayer;
 
-    // Buat lingkaran radius geofence
+    // Lingkaran radius toleransi geofence
     const circle = L.circle([initialLat, initialLng], {
       radius: radiusMeters || 100,
       color: "#ef4444",
       weight: 2,
       fillColor: "#ef4444",
-      fillOpacity: 0.15,
+      fillOpacity: 0.16,
       dashArray: "6, 8",
     }).addTo(map);
     circleRef.current = circle;
 
-    // Buat marker cabang yang bisa digeser (draggable)
+    // Marker cabang
     const marker = L.marker([initialLat, initialLng], {
       icon: createBranchIcon(branchName),
-      draggable: true,
+      draggable: !readOnly,
       autoPan: true,
     }).addTo(map);
     markerRef.current = marker;
 
-    // Event: Dragging marker -> update circle secara real-time
-    marker.on("drag", (e: any) => {
-      const pos = e.target.getLatLng();
-      circle.setLatLng(pos);
-      setCurrentCoords({ lat: pos.lat, lng: pos.lng });
-    });
+    // Dragging marker: Lingkaran ikut bergerak real-time
+    if (!readOnly) {
+      marker.on("drag", (e: any) => {
+        const pos = e.target.getLatLng();
+        circle.setLatLng(pos);
+        setCurrentCoords({ lat: pos.lat, lng: pos.lng });
+      });
 
-    // Event: Selesai drag marker -> simpan koordinat & reverse geocode
-    marker.on("dragend", (e: any) => {
-      const pos = e.target.getLatLng();
-      const lat = Number(pos.lat.toFixed(6));
-      const lng = Number(pos.lng.toFixed(6));
-      setCurrentCoords({ lat, lng });
-      performReverseGeocode(lat, lng);
-      toast.success(
-        `Titik ${branchName} digeser ke koordinat: ${lat.toFixed(5)}, ${lng.toFixed(5)}`
-      );
-    });
+      // Selesai drag marker: Simpan koordinat dan geocode
+      marker.on("dragend", (e: any) => {
+        const pos = e.target.getLatLng();
+        const lat = Number(pos.lat.toFixed(6));
+        const lng = Number(pos.lng.toFixed(6));
+        setCurrentCoords({ lat, lng });
+        performReverseGeocode(lat, lng);
+        toast.success(
+          `Titik absen ${branchName} berhasil digeser ke: ${lat.toFixed(5)}, ${lng.toFixed(5)} dan disimpan!`
+        );
+      });
 
-    // Event: KLIK LANGSUNG DI MANA SAJA PADA PETA (Manual Direct Pointing)
-    map.on("click", (e: L.LeafletMouseEvent) => {
-      const { lat, lng } = e.latlng;
-      const formattedLat = Number(lat.toFixed(6));
-      const formattedLng = Number(lng.toFixed(6));
+      // KLIK LANGSUNG PADA PETA (Direct Manual Pointing)
+      map.on("click", (e: L.LeafletMouseEvent) => {
+        const { lat, lng } = e.latlng;
+        const formattedLat = Number(lat.toFixed(6));
+        const formattedLng = Number(lng.toFixed(6));
 
-      marker.setLatLng([formattedLat, formattedLng]);
-      circle.setLatLng([formattedLat, formattedLng]);
-      setCurrentCoords({ lat: formattedLat, lng: formattedLng });
+        marker.setLatLng([formattedLat, formattedLng]);
+        circle.setLatLng([formattedLat, formattedLng]);
+        setCurrentCoords({ lat: formattedLat, lng: formattedLng });
 
-      performReverseGeocode(formattedLat, formattedLng);
-      toast.success(
-        `Titik target ${branchName} ditentukan: ${formattedLat.toFixed(5)}, ${formattedLng.toFixed(5)}`
-      );
-    });
+        performReverseGeocode(formattedLat, formattedLng);
+        toast.success(
+          `Titik absen ${branchName} ditentukan: ${formattedLat.toFixed(5)}, ${formattedLng.toFixed(5)} (Tersimpan)`
+        );
+      });
+    }
 
     mapInstanceRef.current = map;
 
-    // Invalidate size setelah DOM siap
     const timer = setTimeout(() => {
       map.invalidateSize();
     }, 250);
@@ -355,8 +434,8 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
     }
   };
 
-  // Ambil lokasi GPS perangkat admin langsung dan tandai di peta
-  const handleGetAdminGps = () => {
+  // Cek lokasi GPS perangkat saat ini (HANYA MENAMPILKAN TITIK SAYA, TIDAK MENIMPA TITIK CABANG)
+  const handleCheckMyGpsLocation = () => {
     if (typeof window === "undefined" || !navigator.geolocation) {
       toast.error("Browser tidak mendukung geolokasi GPS");
       return;
@@ -372,14 +451,25 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
 
         if (!mapInstanceRef.current) return;
 
-        // Pasang atau update marker GPS user
+        // Hitung jarak perangkat ke titik cabang target
+        const dist = calculateDistanceMeters(lat, lng, currentCoords.lat, currentCoords.lng);
+
+        setDetectedUserGps({
+          lat,
+          lng,
+          accuracy,
+          distanceToBranch: dist,
+        });
+
+        // Tampilkan marker GPS pengguna dengan warna biru
         if (userLocationMarkerRef.current) {
           userLocationMarkerRef.current.setLatLng([lat, lng]);
         } else {
           const userMarker = L.marker([lat, lng], {
             icon: createUserGpsIcon(),
+            zIndexOffset: 1000,
           })
-            .bindTooltip(`Posisi Anda Saat Ini (Akurasi ±${accuracy}m)`, {
+            .bindTooltip(`Posisi Anda Saat Ini (Akurasi ±${accuracy}m)\nJarak ke Toko: ${dist}m`, {
               permanent: false,
               direction: "top",
             })
@@ -387,19 +477,23 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
           userLocationMarkerRef.current = userMarker;
         }
 
-        // Pindahkan langsung titik cabang ke GPS ini
-        mapInstanceRef.current.flyTo([lat, lng], 18, { animate: true });
+        // Tampilkan kedua titik di peta secara nyaman
+        const bounds = L.latLngBounds([
+          [lat, lng],
+          [currentCoords.lat, currentCoords.lng],
+        ]);
+        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
 
-        if (markerRef.current && circleRef.current) {
-          markerRef.current.setLatLng([lat, lng]);
-          circleRef.current.setLatLng([lat, lng]);
-          setCurrentCoords({ lat, lng });
-          performReverseGeocode(lat, lng);
+        const isInside = dist <= (radiusMeters || 100);
+        if (isInside) {
+          toast.success(
+            `Posisi Anda terdeteksi di dalam radius! Jarak: ${dist}m dari titik toko ${branchName} (Radius: ${radiusMeters}m)`
+          );
+        } else {
+          toast.info(
+            `Posisi Anda: ${dist}m dari titik toko ${branchName} (Toleransi radius: ${radiusMeters}m). Titik toko tetap berada di pin merah.`
+          );
         }
-
-        toast.success(
-          `GPS Terdeteksi! Titik cabang disetel ke lokasi Anda (Akurasi: ±${accuracy} meter)`
-        );
       },
       (err) => {
         setIsLocatingUser(false);
@@ -413,6 +507,20 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
     );
   };
 
+  // Opsi eksplisit: hanya jika admin BENAR-BENAR ingin menyalin koordinat GPS sekarang ke titik cabang
+  const handleExplicitSetBranchToMyGps = () => {
+    if (!detectedUserGps) return;
+    const { lat, lng } = detectedUserGps;
+
+    if (markerRef.current && circleRef.current) {
+      markerRef.current.setLatLng([lat, lng]);
+      circleRef.current.setLatLng([lat, lng]);
+      setCurrentCoords({ lat, lng });
+      performReverseGeocode(lat, lng);
+    }
+    toast.success(`Titik cabang ${branchName} berhasil disetel ke posisi GPS Anda saat ini.`);
+  };
+
   return (
     <div
       className={`relative rounded-xl overflow-hidden border border-border shadow-md transition-all duration-300 bg-muted ${
@@ -422,19 +530,33 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
       } ${className}`}
     >
       {/* Kontainer Peta Leaflet */}
-      <div ref={mapContainerRef} className="w-full h-full z-0 cursor-crosshair" />
+      <div
+        ref={mapContainerRef}
+        className={`w-full h-full z-0 ${readOnly ? "cursor-default" : "cursor-crosshair"}`}
+      />
 
-      {/* OVERLAY TOP: Petunjuk & Indikator Aksi Cepat */}
+      {/* OVERLAY TOP: Petunjuk & Indikator Status Simpan */}
       <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between gap-2 pointer-events-none">
         {/* Banner Petunjuk Interaktif */}
         <div className="pointer-events-auto bg-card/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-border/80 shadow-md text-xs font-medium flex items-center gap-2 text-foreground">
           <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="hidden sm:inline">
-            💡 <strong>Klik peta</strong> atau <strong>geser pin merah</strong> untuk menentukan titik absen.
-          </span>
-          <span className="sm:hidden">
-            💡 Klik / geser pin ke posisi absen
-          </span>
+          {!readOnly ? (
+            <>
+              <span className="hidden sm:inline">
+                💡 <strong>Klik peta</strong> atau <strong>geser pin merah</strong> untuk menentukan titik absen toko.
+              </span>
+              <span className="sm:hidden">
+                💡 Klik/geser pin merah ke toko
+              </span>
+            </>
+          ) : (
+            <span>📍 Peta Lokasi Absensi Cabang</span>
+          )}
+          {lastSavedTime && !readOnly && (
+            <span className="hidden md:inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded">
+              <CheckCircle2 className="h-3 w-3" /> Tersimpan ({lastSavedTime})
+            </span>
+          )}
           {isReverseGeocoding && (
             <span className="text-[10px] text-primary flex items-center gap-1 font-semibold ml-1">
               <RefreshCw className="h-3 w-3 animate-spin" /> Mengambil alamat...
@@ -507,33 +629,33 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
         </div>
       </div>
 
-      {/* OVERLAY RIGHT-BOTTOM: Tombol Kontrol Navigasi (Zoom, Recenter, GPS) */}
+      {/* OVERLAY RIGHT-BOTTOM: Tombol Kontrol Navigasi (Zoom, Recenter, Cek GPS) */}
       <div className="absolute bottom-12 sm:bottom-10 right-2.5 z-10 pointer-events-auto flex flex-col gap-1.5">
-        {/* Tombol GPS Akurat */}
+        {/* Tombol Deteksi Posisi Saya Saat Ini */}
         <Button
           type="button"
           variant="secondary"
           size="icon"
-          onClick={handleGetAdminGps}
+          onClick={handleCheckMyGpsLocation}
           disabled={isLocatingUser}
           className="h-8 w-8 rounded-lg shadow-md bg-card/95 backdrop-blur-md border border-border hover:bg-card cursor-pointer"
-          title="Gunakan Lokasi GPS Saya Saat Ini"
+          title="Tampilkan Posisi GPS Saya Saat Ini di Peta (Tanpa merubah titik toko)"
         >
           <Navigation
-            className={`h-4 w-4 text-primary ${isLocatingUser ? "animate-spin" : ""}`}
+            className={`h-4 w-4 text-blue-600 dark:text-blue-400 ${isLocatingUser ? "animate-spin" : ""}`}
           />
         </Button>
 
-        {/* Tombol Pusatkan ke Titik Cabang */}
+        {/* Tombol Pusatkan ke Titik Cabang Toko */}
         <Button
           type="button"
           variant="secondary"
           size="icon"
           onClick={handleRecenter}
           className="h-8 w-8 rounded-lg shadow-md bg-card/95 backdrop-blur-md border border-border hover:bg-card cursor-pointer"
-          title="Pusatkan Peta ke Titik Cabang"
+          title="Pusatkan Peta ke Titik Toko"
         >
-          <Crosshair className="h-4 w-4 text-primary" />
+          <Crosshair className="h-4 w-4 text-red-500" />
         </Button>
 
         {/* Tombol Zoom In */}
@@ -563,11 +685,11 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
 
       {/* OVERLAY BOTTOM: Bar Status Titik & Radius Real-Time */}
       <div className="absolute bottom-2 left-2.5 right-14 sm:right-auto sm:max-w-md z-10 pointer-events-auto">
-        <div className="bg-card/95 backdrop-blur-md px-3 py-2 rounded-lg border border-border/80 shadow-md text-xs flex flex-col gap-0.5">
+        <div className="bg-card/95 backdrop-blur-md px-3 py-2 rounded-lg border border-border/80 shadow-md text-xs flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="font-bold text-foreground flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5 text-red-500" />
-              Titik: {branchName}
+              Titik Toko: {branchName}
             </span>
             <span className="text-[11px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
               Radius Toleransi: {radiusMeters || 100}m
@@ -581,6 +703,22 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
           {address && (
             <div className="text-[10px] text-muted-foreground truncate max-w-xs sm:max-w-sm">
               📍 {address}
+            </div>
+          )}
+
+          {/* Jika mendeteksi GPS perangkat, tampilkan info jarak & tombol opsional */}
+          {detectedUserGps && !readOnly && (
+            <div className="mt-1 pt-1 border-t border-border flex items-center justify-between gap-1 flex-wrap text-[10px]">
+              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                Jarak Anda ke toko: <strong>{detectedUserGps.distanceToBranch}m</strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleExplicitSetBranchToMyGps}
+                className="text-[10px] text-primary hover:underline font-bold cursor-pointer"
+              >
+                Gunakan Posisi Saya Sebagai Titik Toko
+              </button>
             </div>
           )}
         </div>

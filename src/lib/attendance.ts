@@ -72,6 +72,7 @@ export function calculateDistanceMeters(
   lat2: number,
   lon2: number
 ): number {
+  if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return 999999;
   const R = 6371e3; // Radius bumi dalam meter
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
@@ -84,6 +85,31 @@ export function calculateDistanceMeters(
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return Math.round(R * c);
+}
+
+/**
+ * Validasi apakah kasir berada dalam radius cabang dengan memperhitungkan toleransi akurasi GPS
+ * (Akurasi GPS perangkat smartphone/laptop dalam ruangan sering berdeviasi hingga 20-30 meter)
+ */
+export function isCashierWithinBranchRadius(
+  cashierLat: number,
+  cashierLon: number,
+  branchLat: number,
+  branchLon: number,
+  radiusMeters: number,
+  gpsAccuracy?: number
+): { isWithin: boolean; distance: number; effectiveDistance: number } {
+  const distance = calculateDistanceMeters(cashierLat, cashierLon, branchLat, branchLon);
+  // Berikan toleransi akurasi GPS (maksimal buffer 35m untuk pengguna di dalam gedung/ruko)
+  const accuracyBuffer = Math.min(Math.max(0, gpsAccuracy || 0), 35);
+  const effectiveDistance = Math.max(0, distance - accuracyBuffer);
+  const isWithin = effectiveDistance <= radiusMeters;
+
+  return {
+    isWithin,
+    distance,
+    effectiveDistance,
+  };
 }
 
 /**
@@ -127,19 +153,112 @@ export function getBranchLocation(branchName: string): BranchLocationConfig {
 }
 
 /**
- * Simpan konfigurasi lokasi cabang
+ * Simpan konfigurasi lokasi cabang secara lokal dan sinkronisasikan ke Supabase
  */
 export function saveBranchLocation(config: BranchLocationConfig): void {
   if (typeof window === "undefined") return;
   try {
     const current = getBranchLocations();
-    current[config.branch_name] = {
+    const updatedConfig = {
       ...config,
+      latitude: Number(config.latitude.toFixed(6)),
+      longitude: Number(config.longitude.toFixed(6)),
+      radius_meters: Number(config.radius_meters) || 100,
       updated_at: new Date().toISOString(),
     };
+    current[config.branch_name] = updatedConfig;
     localStorage.setItem(BRANCH_CONFIG_KEY, JSON.stringify(current));
+
+    // Picu event agar komponen lain (seperti halaman absensi kasir) langsung terupdate tanpa reload
+    window.dispatchEvent(new CustomEvent("branch_location_updated", { detail: updatedConfig }));
+    window.dispatchEvent(new Event("attendance_updated"));
+    window.dispatchEvent(new Event("storage"));
+
+    // Sinkronkan ke database Supabase branches secara latar belakang
+    syncBranchLocationToSupabase(updatedConfig);
   } catch (err) {
     console.warn("Gagal menyimpan lokasi cabang:", err);
+  }
+}
+
+/**
+ * Sinkronisasi konfigurasi lokasi cabang ke tabel branches di Supabase
+ */
+export async function syncBranchLocationToSupabase(config: BranchLocationConfig): Promise<void> {
+  try {
+    const geoPayload = JSON.stringify({
+      addr: config.address || config.branch_name,
+      lat: config.latitude,
+      lng: config.longitude,
+      radius: config.radius_meters,
+      updated_at: new Date().toISOString(),
+    });
+
+    const { data: existing } = await supabase
+      .from("branches")
+      .select("id, branch_name")
+      .ilike("branch_name", config.branch_name.trim())
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      await supabase
+        .from("branches")
+        .update({
+          shop_address: geoPayload,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existing[0].id);
+    } else {
+      await supabase.from("branches").insert({
+        branch_name: config.branch_name.trim(),
+        shop_name: "AMI Fried Chicken",
+        shop_address: geoPayload,
+      });
+    }
+  } catch (err) {
+    console.warn("Sinkronisasi lokasi cabang ke Supabase diabaikan:", err);
+  }
+}
+
+/**
+ * Muat konfigurasi lokasi cabang dari database Supabase dan perbarui cache lokal
+ */
+export async function loadBranchLocationsFromSupabase(): Promise<Record<string, BranchLocationConfig>> {
+  try {
+    const { data, error } = await supabase.from("branches").select("*");
+    if (error || !data) return getBranchLocations();
+
+    const localMap = getBranchLocations();
+    let hasUpdates = false;
+
+    data.forEach((b: any) => {
+      if (!b.branch_name) return;
+      if (b.shop_address && b.shop_address.includes('"lat"')) {
+        try {
+          const parsed = JSON.parse(b.shop_address);
+          if (parsed.lat && parsed.lng) {
+            localMap[b.branch_name] = {
+              branch_name: b.branch_name,
+              latitude: Number(parsed.lat),
+              longitude: Number(parsed.lng),
+              radius_meters: Number(parsed.radius) || 100,
+              address: parsed.addr || b.shop_address,
+              updated_at: parsed.updated_at || b.updated_at,
+            };
+            hasUpdates = true;
+          }
+        } catch {}
+      }
+    });
+
+    if (hasUpdates && typeof window !== "undefined") {
+      localStorage.setItem(BRANCH_CONFIG_KEY, JSON.stringify(localMap));
+      window.dispatchEvent(new Event("attendance_updated"));
+    }
+
+    return localMap;
+  } catch {
+    return getBranchLocations();
   }
 }
 
