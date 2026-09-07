@@ -368,9 +368,213 @@ export function getTodayAttendance(
 }
 
 /**
+ * Sinkronisasi/Simpan catatan absensi ke Supabase Cloud (branches.shop_address & daily_reports)
+ */
+export async function saveAttendanceToCloud(record: AttendanceRecord): Promise<boolean> {
+  const today = record.date || getTodayDateString();
+  const targetBranch = (record.branch_name || "Cabang 1").trim();
+  const nowStr = new Date().toISOString();
+
+  let branchUpdated = false;
+  let reportUpdated = false;
+
+  // 1. Simpan di tabel `branches` (dalam JSON shop_address)
+  // Tabel branches dapat diakses secara publik oleh semua device terautentikasi
+  try {
+    const { data: branchRows } = await supabase
+      .from("branches")
+      .select("id, branch_name, shop_address")
+      .ilike("branch_name", targetBranch)
+      .limit(1);
+
+    if (branchRows && branchRows.length > 0) {
+      const b = branchRows[0];
+      let currentPayload: any = {};
+      if (b.shop_address && b.shop_address.startsWith("{")) {
+        try {
+          currentPayload = JSON.parse(b.shop_address);
+        } catch {
+          currentPayload = { addr: b.shop_address };
+        }
+      } else {
+        currentPayload = { addr: b.shop_address || targetBranch };
+      }
+
+      const existingAttsByDate: Record<string, AttendanceRecord[]> = currentPayload.attendances || {};
+      const todayList: AttendanceRecord[] = existingAttsByDate[today] || [];
+
+      // Filter out duplicate for this user on this day and push latest
+      const filteredToday = todayList.filter(
+        (r) =>
+          !(
+            (record.user_id && r.user_id === record.user_id) ||
+            (record.user_email &&
+              r.user_email &&
+              r.user_email.toLowerCase().trim() === record.user_email.toLowerCase().trim())
+          )
+      );
+      filteredToday.push(record);
+
+      currentPayload.attendances = {
+        ...existingAttsByDate,
+        [today]: filteredToday,
+      };
+      currentPayload.updated_at = nowStr;
+
+      const { error: branchErr } = await supabase
+        .from("branches")
+        .update({
+          shop_address: JSON.stringify(currentPayload),
+          updated_at: nowStr,
+        })
+        .eq("id", b.id);
+
+      if (!branchErr) branchUpdated = true;
+    }
+  } catch (err) {
+    console.warn("saveAttendanceToCloud (branches) warning:", err);
+  }
+
+  // 2. Simpan di tabel `daily_reports`
+  try {
+    const notePayload = JSON.stringify(record);
+
+    const { data: existingReports } = await supabase
+      .from("daily_reports")
+      .select("id, note")
+      .eq("report_date", today)
+      .eq("created_by", record.user_id)
+      .limit(1);
+
+    if (existingReports && existingReports.length > 0 && existingReports[0].id) {
+      const { error: repErr } = await supabase
+        .from("daily_reports")
+        .update({
+          note: notePayload,
+          branch_name: targetBranch,
+          updated_at: nowStr,
+        })
+        .eq("id", existingReports[0].id);
+
+      if (!repErr) reportUpdated = true;
+    } else {
+      const { error: insErr } = await supabase.from("daily_reports").insert({
+        report_date: today,
+        initial_cash: 0,
+        note: notePayload,
+        created_by: record.user_id,
+        branch_name: targetBranch,
+      });
+
+      if (!insErr) reportUpdated = true;
+    }
+  } catch (err) {
+    console.warn("saveAttendanceToCloud (daily_reports) warning:", err);
+  }
+
+  // 3. Broadcast Realtime Sync ke seluruh perangkat aktif
+  try {
+    const channel = supabase.channel("attendance_realtime_sync");
+    channel.send({
+      type: "broadcast",
+      event: "cashier_attendance_updated",
+      payload: record,
+    });
+  } catch {}
+
+  return branchUpdated || reportUpdated;
+}
+
+/**
+ * Sinkronisasi SEMUA data absensi kasir dari Supabase Cloud (untuk riwayat di admin & perangkat kasir)
+ */
+export async function loadAllAttendancesFromCloud(): Promise<AttendanceRecord[]> {
+  const collectedMap = new Map<string, AttendanceRecord>();
+
+  // 1. Ambil dari tabel `branches`
+  try {
+    const { data: branchRows } = await supabase.from("branches").select("shop_address");
+    if (branchRows && branchRows.length > 0) {
+      for (const b of branchRows) {
+        if (b.shop_address && b.shop_address.includes('"attendances"')) {
+          try {
+            const parsed = JSON.parse(b.shop_address);
+            if (parsed.attendances && typeof parsed.attendances === "object") {
+              Object.values(parsed.attendances).forEach((list: any) => {
+                if (Array.isArray(list)) {
+                  list.forEach((rec: AttendanceRecord) => {
+                    if (rec && rec.date && (rec.user_id || rec.user_email)) {
+                      const key = `${rec.date}_${rec.user_id || rec.user_email}`;
+                      collectedMap.set(key, rec);
+                    }
+                  });
+                }
+              });
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("loadAllAttendancesFromCloud (branches) warning:", err);
+  }
+
+  // 2. Ambil dari tabel `daily_reports`
+  try {
+    const { data: reports } = await supabase
+      .from("daily_reports")
+      .select("id, note, report_date, created_by, branch_name")
+      .order("report_date", { ascending: false })
+      .limit(100);
+
+    if (reports && reports.length > 0) {
+      for (const rep of reports) {
+        if (rep.note && rep.note.includes('"clock_in_time"')) {
+          try {
+            const parsed = JSON.parse(rep.note) as AttendanceRecord;
+            if (parsed && parsed.date && (parsed.user_id || parsed.user_email)) {
+              const key = `${parsed.date}_${parsed.user_id || parsed.user_email}`;
+              // Lebih utamakan record yang paling lengkap (memiliki clock_out_time atau breaks)
+              if (!collectedMap.has(key) || parsed.clock_out_time || (parsed.breaks && parsed.breaks.length > 0)) {
+                collectedMap.set(key, parsed);
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("loadAllAttendancesFromCloud (daily_reports) warning:", err);
+  }
+
+  // Merge dengan local cache
+  const localList = getAttendanceRecords();
+  localList.forEach((r) => {
+    if (r && r.date && (r.user_id || r.user_email)) {
+      const key = `${r.date}_${r.user_id || r.user_email}`;
+      if (!collectedMap.has(key)) {
+        collectedMap.set(key, r);
+      }
+    }
+  });
+
+  const merged = Array.from(collectedMap.values()).sort(
+    (a, b) => new Date(b.clock_in_time).getTime() - new Date(a.clock_in_time).getTime()
+  );
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(merged));
+    window.dispatchEvent(new Event("attendance_updated"));
+    window.dispatchEvent(new Event("storage"));
+  }
+
+  return merged;
+}
+
+/**
  * Sinkronisasi data absensi kasir hari ini dari Supabase Cloud (Multi-Device Sync)
  * Mengambil record absensi kasir berdasarkan akun di database sehingga jika kasir
- * pindah perangkat (misal dari HP ke laptop/komputer kasir), status absensi tetap aktif.
+ * absen di HP, lalu membuka komputer/laptop kasir, status absensi langsung sinkron.
  */
 export async function syncTodayAttendanceFromCloud(
   userId?: string | null,
@@ -380,13 +584,44 @@ export async function syncTodayAttendanceFromCloud(
   const today = getTodayDateString();
   const normalizedEmail = userEmail?.toLowerCase().trim();
 
+  let matchedRecord: AttendanceRecord | null = null;
+
+  // 1. Coba ambil dari tabel `branches`
   try {
-    // 1. Coba cari di tabel daily_reports untuk hari ini
+    const { data: branchRows } = await supabase.from("branches").select("shop_address");
+    if (branchRows && branchRows.length > 0) {
+      for (const b of branchRows) {
+        if (b.shop_address && b.shop_address.includes('"attendances"')) {
+          try {
+            const parsed = JSON.parse(b.shop_address);
+            if (parsed.attendances && parsed.attendances[today] && Array.isArray(parsed.attendances[today])) {
+              for (const rec of parsed.attendances[today] as AttendanceRecord[]) {
+                const isUserMatch =
+                  (userId && rec.user_id === userId) ||
+                  (normalizedEmail && rec.user_email && rec.user_email.toLowerCase().trim() === normalizedEmail);
+
+                if (isUserMatch && rec.date === today) {
+                  matchedRecord = rec;
+                  break;
+                }
+              }
+            }
+          } catch {}
+        }
+        if (matchedRecord) break;
+      }
+    }
+  } catch (err) {
+    console.warn("syncTodayAttendanceFromCloud (branches) warning:", err);
+  }
+
+  // 2. Jika belum ditemukan atau untuk memverifikasi versi terbaru, cari di tabel `daily_reports`
+  try {
     const { data: reports } = await supabase
       .from("daily_reports")
       .select("*")
       .eq("report_date", today)
-      .order("created_at", { ascending: false });
+      .order("updated_at", { ascending: false });
 
     if (reports && reports.length > 0) {
       for (const rep of reports) {
@@ -400,32 +635,43 @@ export async function syncTodayAttendanceFromCloud(
                 parsedAtt.user_email.toLowerCase().trim() === normalizedEmail);
 
             if (matchesUser && parsedAtt.date === today) {
-              // Update local cache
-              const currentList = getAttendanceRecords();
-              const merged = [
-                parsedAtt,
-                ...currentList.filter(
-                  (r) =>
-                    !(
-                      r.date === today &&
-                      ((userId && r.user_id === userId) ||
-                        (normalizedEmail && r.user_email?.toLowerCase().trim() === normalizedEmail))
-                    )
-                ),
-              ];
-              if (typeof window !== "undefined") {
-                localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(merged));
-                window.dispatchEvent(new Event("attendance_updated"));
-                window.dispatchEvent(new Event("storage"));
+              if (
+                !matchedRecord ||
+                parsedAtt.clock_out_time ||
+                (parsedAtt.breaks && parsedAtt.breaks.length > (matchedRecord.breaks?.length || 0))
+              ) {
+                matchedRecord = parsedAtt;
               }
-              return parsedAtt;
+              break;
             }
           } catch {}
         }
       }
     }
   } catch (err) {
-    console.warn("syncTodayAttendanceFromCloud error:", err);
+    console.warn("syncTodayAttendanceFromCloud (daily_reports) warning:", err);
+  }
+
+  // 3. Jika record ditemukan di cloud, simpan ke localStorage perangkat ini
+  if (matchedRecord) {
+    const currentList = getAttendanceRecords();
+    const merged = [
+      matchedRecord,
+      ...currentList.filter(
+        (r) =>
+          !(
+            r.date === today &&
+            ((userId && r.user_id === userId) ||
+              (normalizedEmail && r.user_email?.toLowerCase().trim() === normalizedEmail))
+          )
+      ),
+    ];
+    if (typeof window !== "undefined") {
+      localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(merged));
+      window.dispatchEvent(new Event("attendance_updated"));
+      window.dispatchEvent(new Event("storage"));
+    }
+    return matchedRecord;
   }
 
   return getTodayAttendance(userId, userEmail);
@@ -506,47 +752,8 @@ export async function recordAttendance(payload: {
     window.dispatchEvent(new Event("storage"));
   }
 
-  // Sinkronkan ke Supabase Cloud (daily_reports & realtime broadcast)
-  try {
-    const notePayload = JSON.stringify(record);
-
-    // Coba update atau insert ke daily_reports per akun kasir
-    const { data: existingReport } = await supabase
-      .from("daily_reports")
-      .select("id")
-      .eq("report_date", today)
-      .eq("created_by", payload.userId)
-      .limit(1);
-
-    if (existingReport && existingReport.length > 0 && existingReport[0].id) {
-      await supabase
-        .from("daily_reports")
-        .update({
-          note: notePayload,
-          branch_name: payload.branchName,
-          updated_at: now.toISOString(),
-        })
-        .eq("id", existingReport[0].id);
-    } else {
-      await supabase.from("daily_reports").insert({
-        report_date: today,
-        initial_cash: 0,
-        note: notePayload,
-        created_by: payload.userId,
-        branch_name: payload.branchName,
-      });
-    }
-
-    // Broadcast ke channel realtime
-    const channel = supabase.channel("attendance_realtime_sync");
-    channel.send({
-      type: "broadcast",
-      event: "cashier_attendance_updated",
-      payload: record,
-    });
-  } catch (err) {
-    console.warn("Cloud sync recordAttendance warning:", err);
-  }
+  // Sinkronkan ke Supabase Cloud (branches & daily_reports & realtime broadcast)
+  await saveAttendanceToCloud(record);
 
   return record;
 }
@@ -634,35 +841,11 @@ export async function recordClockOut(payload: {
   if (typeof window !== "undefined") {
     localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(records));
     window.dispatchEvent(new Event("attendance_updated"));
+    window.dispatchEvent(new Event("storage"));
   }
 
-  // Update ke Supabase Cloud
-  try {
-    const notePayload = JSON.stringify(updatedRecord);
-    const { data: existingReport } = await supabase
-      .from("daily_reports")
-      .select("id")
-      .eq("report_date", today)
-      .eq("created_by", payload.userId)
-      .limit(1);
-
-    if (existingReport && existingReport.length > 0 && existingReport[0].id) {
-      await supabase
-        .from("daily_reports")
-        .update({
-          note: notePayload,
-          updated_at: now.toISOString(),
-        })
-        .eq("id", existingReport[0].id);
-    }
-
-    const channel = supabase.channel("attendance_realtime_sync");
-    channel.send({
-      type: "broadcast",
-      event: "cashier_attendance_updated",
-      payload: updatedRecord,
-    });
-  } catch {}
+  // Update ke Supabase Cloud (branches & daily_reports)
+  await saveAttendanceToCloud(updatedRecord);
 
   return updatedRecord;
 }
@@ -714,17 +897,11 @@ export async function startBreak(payload: {
   if (typeof window !== "undefined") {
     localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(records));
     window.dispatchEvent(new Event("attendance_updated"));
+    window.dispatchEvent(new Event("storage"));
   }
 
   // Cloud sync
-  try {
-    const notePayload = JSON.stringify(updatedRecord);
-    await supabase
-      .from("daily_reports")
-      .update({ note: notePayload })
-      .eq("report_date", today)
-      .eq("created_by", payload.userId);
-  } catch {}
+  await saveAttendanceToCloud(updatedRecord);
 
   return updatedRecord;
 }
@@ -782,17 +959,11 @@ export async function endBreak(payload: {
   if (typeof window !== "undefined") {
     localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(records));
     window.dispatchEvent(new Event("attendance_updated"));
+    window.dispatchEvent(new Event("storage"));
   }
 
   // Cloud sync
-  try {
-    const notePayload = JSON.stringify(updatedRecord);
-    await supabase
-      .from("daily_reports")
-      .update({ note: notePayload })
-      .eq("report_date", today)
-      .eq("created_by", payload.userId);
-  } catch {}
+  await saveAttendanceToCloud(updatedRecord);
 
   return updatedRecord;
 }

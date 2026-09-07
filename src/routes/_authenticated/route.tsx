@@ -51,22 +51,47 @@ function AuthedLayout() {
   const { role, user, branchName, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Re-check status when attendance updates occur
+  // Status sinkronisasi absensi dari cloud untuk multi-perangkat
+  const [attSynced, setAttSynced] = useState(false);
   const [attRevision, setAttRevision] = useState(0);
+
   useEffect(() => {
+    let isMounted = true;
     const handleUpdate = () => setAttRevision((v) => v + 1);
     window.addEventListener("attendance_updated", handleUpdate);
     window.addEventListener("storage", handleUpdate);
 
+    // Sinkronkan data absensi hari ini dari Supabase Cloud
     if (user?.id) {
-      syncTodayAttendanceFromCloud(user.id, user.email).then((att) => {
-        if (att) setAttRevision((v) => v + 1);
-      });
+      syncTodayAttendanceFromCloud(user.id, user.email)
+        .catch(() => null)
+        .finally(() => {
+          if (isMounted) {
+            setAttSynced(true);
+            setAttRevision((v) => v + 1);
+          }
+        });
+    } else {
+      setAttSynced(true);
     }
 
+    // Pasang Realtime Listener Supabase untuk menerima update absensi dari perangkat lain
+    const channel = supabase
+      .channel("attendance_realtime_sync_layout")
+      .on("broadcast", { event: "cashier_attendance_updated" }, (payload) => {
+        if (user) {
+          syncTodayAttendanceFromCloud(user.id, user.email).then(() => {
+            if (isMounted) setAttRevision((v) => v + 1);
+          });
+        }
+      })
+      .subscribe();
+
     return () => {
+      isMounted = false;
       window.removeEventListener("attendance_updated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
+      supabase.removeChannel(channel);
     };
   }, [user?.id, user?.email]);
 
@@ -92,6 +117,9 @@ function AuthedLayout() {
   // Route protection effect using router navigation
   useEffect(() => {
     if (loading) return;
+    // Tunggu sinkronisasi cloud absensi selesai sebelum mengambil keputusan pengalihan untuk kasir
+    if (effectiveRole === "cashier" && !attSynced) return;
+
     if (effectiveRole === "cashier") {
       if (!hasCheckedIn && !pathname.startsWith("/attendance")) {
         navigate({ to: "/attendance", replace: true });
@@ -102,11 +130,14 @@ function AuthedLayout() {
         return;
       }
     }
-  }, [effectiveRole, hasCheckedIn, pathname, isAllowed, loading, navigate, attRevision]);
+  }, [effectiveRole, hasCheckedIn, pathname, isAllowed, loading, attSynced, navigate, attRevision]);
 
-  if (loading) {
+  if (loading || (effectiveRole === "cashier" && !attSynced)) {
     return (
-      <div className="min-h-screen grid place-items-center text-muted-foreground">Memuat…</div>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center bg-background">
+        <div className="animate-spin h-7 w-7 border-2 border-primary border-t-transparent rounded-full mb-3" />
+        <p className="text-sm font-medium text-muted-foreground">Menyelaraskan data sesi & absensi...</p>
+      </div>
     );
   }
 

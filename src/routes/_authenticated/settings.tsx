@@ -62,6 +62,8 @@ import {
   hasCashierClockedOutToday,
   getTotalBreakMinutes,
   getTodayAttendance,
+  syncTodayAttendanceFromCloud,
+  loadAllAttendancesFromCloud,
   type AttendanceRecord,
   type AttendanceBreak,
   type BranchLocationConfig,
@@ -569,6 +571,15 @@ function SettingsPage() {
       setAttRecords(getAttendanceRecords());
     };
     syncAttendance();
+
+    // Tarik riwayat absensi lengkap dari cloud
+    loadAllAttendancesFromCloud().then((cloudList) => {
+      if (cloudList && cloudList.length > 0) {
+        setAttRecords(cloudList);
+        setTodayCashierAtt(getTodayAttendance(user?.id, user?.email));
+      }
+    });
+
     window.addEventListener("attendance_updated", syncAttendance);
     window.addEventListener("storage", syncAttendance);
     return () => {
@@ -1049,9 +1060,17 @@ function SettingsPage() {
     );
   };
 
-  const handleRefreshAttendanceRecords = () => {
-    setAttRecords(getAttendanceRecords());
-    toast.info("Data riwayat absensi diperbarui");
+  const handleRefreshAttendanceRecords = async () => {
+    toast.info("Menyinkronkan riwayat absensi dari Cloud...");
+    try {
+      const cloudList = await loadAllAttendancesFromCloud();
+      setAttRecords(cloudList);
+      setTodayCashierAtt(getTodayAttendance(user?.id, user?.email));
+      toast.success("Data riwayat absensi berhasil diperbarui dari Cloud!");
+    } catch {
+      setAttRecords(getAttendanceRecords());
+      toast.info("Data riwayat absensi diperbarui");
+    }
   };
 
   const handleClearAttendanceHistory = () => {
