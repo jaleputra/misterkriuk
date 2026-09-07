@@ -17,6 +17,7 @@ import {
   Navigation,
   ShieldCheck,
   UserCheck,
+  Cloud,
 } from "lucide-react";
 import {
   getBranchLocations,
@@ -27,6 +28,7 @@ import {
   recordAttendance,
   hasCashierCheckedInToday,
   getTodayAttendance,
+  syncTodayAttendanceFromCloud,
   type AttendanceRecord,
   type BranchLocationConfig,
 } from "@/lib/attendance";
@@ -68,25 +70,69 @@ function CashierAttendancePage() {
   });
 
   const [branchVersion, setBranchVersion] = useState(0);
+  const [cloudSyncing, setCloudSyncing] = useState(false);
 
-  // Muat lokasi cabang terbaru dari Supabase saat halaman absensi dibuka
+  // Fungsi muat ulang lokasi dari Cloud
+  const handleRefreshCloudLocations = async () => {
+    setCloudSyncing(true);
+    try {
+      await loadBranchLocationsFromSupabase();
+      if (user) {
+        const cloudAtt = await syncTodayAttendanceFromCloud(user.id, user.email);
+        if (cloudAtt) setTodayAtt(cloudAtt);
+      }
+      setBranchVersion((v) => v + 1);
+      toast.success("Titik lokasi cabang & status absensi berhasil disinkronkan dari Cloud!");
+    } catch {
+      toast.info("Sinkronisasi cloud selesai.");
+    } finally {
+      setCloudSyncing(false);
+    }
+  };
+
+  // Muat lokasi cabang terbaru dari Supabase dan status absensi kasir saat halaman dibuka
   useEffect(() => {
     loadBranchLocationsFromSupabase().then(() => {
       setBranchVersion((v) => v + 1);
     });
 
+    if (user) {
+      syncTodayAttendanceFromCloud(user.id, user.email).then((cloudRec) => {
+        if (cloudRec) setTodayAtt(cloudRec);
+      });
+    }
+
     const handleSync = () => {
       setBranchVersion((v) => v + 1);
+      setTodayAtt(getTodayAttendance(user?.id, user?.email));
     };
+
     window.addEventListener("branch_location_updated", handleSync);
     window.addEventListener("attendance_updated", handleSync);
     window.addEventListener("storage", handleSync);
+
+    // Pasang Realtime Listener Supabase untuk menerima broadcast update titik lokasi & absensi
+    const channel = supabase
+      .channel("attendance_realtime_sync_listener")
+      .on("broadcast", { event: "branch_location_changed" }, () => {
+        loadBranchLocationsFromSupabase().then(() => setBranchVersion((v) => v + 1));
+      })
+      .on("broadcast", { event: "cashier_attendance_updated" }, () => {
+        if (user) {
+          syncTodayAttendanceFromCloud(user.id, user.email).then((r) => {
+            if (r) setTodayAtt(r);
+          });
+        }
+      })
+      .subscribe();
+
     return () => {
       window.removeEventListener("branch_location_updated", handleSync);
       window.removeEventListener("attendance_updated", handleSync);
       window.removeEventListener("storage", handleSync);
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user?.id, user?.email]);
 
   const branchLocations = useMemo(() => {
     return getBranchLocations();
@@ -149,7 +195,7 @@ function CashierAttendancePage() {
       coords.longitude,
       currentBranchConfig.latitude,
       currentBranchConfig.longitude,
-      currentBranchConfig.radius_meters,
+      currentBranchConfig.radius_meters || 150,
       coords.accuracy
     );
   }, [coords, currentBranchConfig]);
@@ -211,7 +257,7 @@ function CashierAttendancePage() {
       return;
     }
 
-    if (!isWithinRadius) {
+    if (!isWithinRadius && role !== "admin") {
       toast.error(
         `Anda berada di luar radius (${distanceToBranch}m dari titik cabang). Maksimal radius: ${currentBranchConfig.radius_meters}m.`
       );
@@ -272,11 +318,24 @@ function CashierAttendancePage() {
               </div>
             </div>
           </div>
-          {role === "admin" && (
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-              Admin Mode (Bebas Absen)
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshCloudLocations}
+              disabled={cloudSyncing}
+              className="h-7 text-[11px] px-2"
+              title="Tarik titik lokasi cabang & absensi terbaru dari Cloud"
+            >
+              <Cloud className={`h-3 w-3 mr-1 text-primary ${cloudSyncing ? "animate-spin" : ""}`} />
+              {cloudSyncing ? "Sinkron..." : "Sinkron Cloud"}
+            </Button>
+            {role === "admin" && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                Admin Mode (Bebas Absen)
+              </Badge>
+            )}
+          </div>
         </CardContent>
       </Card>
 

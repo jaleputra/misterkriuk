@@ -67,7 +67,7 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
     lng: longitude && !isNaN(longitude) ? longitude : 106.816666,
   });
 
-  // Sinkronisasi koordinat internal saat props latitude / longitude berubah dari luar
+  // Sinkronisasi koordinat internal & penguncian posisi saat props latitude / longitude / branchName berubah dari luar
   useEffect(() => {
     if (latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
       setCurrentCoords({ lat: latitude, lng: longitude });
@@ -75,22 +75,19 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
       if (markerRef.current && circleRef.current && mapInstanceRef.current) {
         const newLatLng = new L.LatLng(latitude, longitude);
         markerRef.current.setLatLng(newLatLng);
+        markerRef.current.setIcon(createBranchIcon(branchName));
         circleRef.current.setLatLng(newLatLng);
-        circleRef.current.setRadius(radiusMeters || 100);
+        circleRef.current.setRadius(radiusMeters || 150);
 
-        const curCenter = mapInstanceRef.current.getCenter();
-        const dist = curCenter.distanceTo(newLatLng);
-        if (dist > 80) {
-          mapInstanceRef.current.panTo(newLatLng, { animate: true });
-        }
+        mapInstanceRef.current.setView(newLatLng, mapInstanceRef.current.getZoom() || 17, { animate: true });
       }
     }
-  }, [latitude, longitude]);
+  }, [latitude, longitude, branchName]);
 
   // Sinkronisasi radius geofence saat props radiusMeters berubah
   useEffect(() => {
     if (circleRef.current) {
-      circleRef.current.setRadius(radiusMeters || 100);
+      circleRef.current.setRadius(radiusMeters || 150);
     }
   }, [radiusMeters]);
 
@@ -256,18 +253,51 @@ export const AttendanceLocationPickerMap: React.FC<AttendanceLocationPickerMapPr
     }
   };
 
-  // Fungsi reverse-geocoding via OpenStreetMap Nominatim
+  // Fungsi reverse-geocoding via OpenStreetMap Nominatim dengan formatting terstruktur
   const performReverseGeocode = async (lat: number, lng: number) => {
     setIsReverseGeocoding(true);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&extratags=1&namedetails=1`,
         { headers: { Accept: "application/json" } }
       );
       if (res.ok) {
         const data = await res.json();
-        if (data?.display_name) {
-          autoCommitCoordinates(lat, lng, data.display_name);
+        if (data) {
+          const addr = data.address || {};
+          const mainName =
+            data.name ||
+            addr.amenity ||
+            addr.shop ||
+            addr.building ||
+            addr.restaurant ||
+            addr.fast_food ||
+            addr.commercial ||
+            (addr.road ? `${addr.road}${addr.house_number ? " No. " + addr.house_number : ""}` : null) ||
+            data.display_name?.split(",")[0]?.trim() ||
+            branchName;
+
+          const roadPart = addr.road
+            ? `${addr.road}${addr.house_number ? " No. " + addr.house_number : ""}`
+            : "";
+          const villagePart = addr.village || addr.suburb || addr.neighbourhood || addr.hamlet || "";
+          const districtPart = addr.city_district || addr.district || addr.subdistrict || "";
+          const cityPart = addr.city || addr.town || addr.municipality || addr.county || "";
+          const statePart = addr.state || "";
+          const postCode = addr.postcode || "";
+
+          const subParts: string[] = [];
+          if (roadPart && roadPart !== mainName) subParts.push(roadPart);
+          if (villagePart) subParts.push(villagePart.startsWith("Kel.") || villagePart.startsWith("Desa") ? villagePart : `Kel. ${villagePart}`);
+          if (districtPart) subParts.push(districtPart.startsWith("Kec.") ? districtPart : `Kec. ${districtPart}`);
+          if (cityPart) subParts.push(cityPart);
+          if (statePart) subParts.push(statePart);
+          if (postCode) subParts.push(postCode);
+
+          const subtitle = subParts.length > 0 ? subParts.join(", ") : data.display_name || "";
+          const detailedAddr = mainName && subtitle && !subtitle.includes(mainName) ? `${mainName}, ${subtitle}` : subtitle || mainName;
+
+          autoCommitCoordinates(lat, lng, detailedAddr);
           return;
         }
       }

@@ -170,11 +170,23 @@ function SettingsPage() {
       }
 
       if (editingBranchId) {
+        let finalShopAddress = sAddress;
+        try {
+          const { data: curDb } = await supabase.from("branches").select("shop_address").eq("id", editingBranchId).limit(1);
+          if (curDb && curDb[0]?.shop_address && curDb[0].shop_address.includes('"lat"')) {
+            try {
+              const geoObj = JSON.parse(curDb[0].shop_address);
+              geoObj.addr = sAddress || geoObj.addr;
+              finalShopAddress = JSON.stringify(geoObj);
+            } catch {}
+          }
+        } catch {}
+
         try {
           await supabase.from("branches").update({
             shop_name: sName,
             branch_name: bName,
-            shop_address: sAddress,
+            shop_address: finalShopAddress,
             shop_phone: sPhone,
             whatsapp_number: sWa,
             updated_at: new Date().toISOString(),
@@ -186,7 +198,7 @@ function SettingsPage() {
         const curList: any[] = JSON.parse(localStorage.getItem("app_branches_data") || "[]");
         const nextList = curList.map((item) =>
           item.id === editingBranchId
-            ? { ...item, shop_name: sName, branch_name: bName, shop_address: sAddress, shop_phone: sPhone, whatsapp_number: sWa, updated_at: new Date().toISOString() }
+            ? { ...item, shop_name: sName, branch_name: bName, shop_address: finalShopAddress, shop_phone: sPhone, whatsapp_number: sWa, updated_at: new Date().toISOString() }
             : item
         );
         localStorage.setItem("app_branches_data", JSON.stringify(nextList));
@@ -539,11 +551,6 @@ function SettingsPage() {
   const [historyDateFilter, setHistoryDateFilter] = useState<"all" | "today" | "7" | "30">("all");
   const [historyBranchFilter, setHistoryBranchFilter] = useState<string>("all");
 
-  // State untuk pencarian alamat interaktif
-  const [addressSearchLoading, setAddressSearchLoading] = useState(false);
-  const [addressSearchResults, setAddressSearchResults] = useState<Array<{ lat: string; lon: string; display_name: string }>>([]);
-  const [showAddressDropdown, setShowAddressDropdown] = useState(false);
-
   // ===== State Absensi Kasir (Absen Pulang & Istirahat) =====
   const [todayCashierAtt, setTodayCashierAtt] = useState<AttendanceRecord | null>(() =>
     getTodayAttendance(user?.id, user?.email)
@@ -692,13 +699,7 @@ function SettingsPage() {
         notes: `Pulang jarak ${cashierDistance}m (Akurasi GPS ±${cashierCoords.accuracy ?? 0}m)`,
       });
       setTodayCashierAtt(rec);
-      toast.success("istirahatlah, besok mulai bekerja lagi", { duration: 5000 });
-      setTimeout(async () => {
-        try {
-          await supabase.auth.signOut();
-        } catch {}
-        navigate({ to: "/auth", replace: true });
-      }, 1500);
+      toast.success("Absen pulang berhasil dicatat. istirahatlah, besok mulai bekerja lagi", { duration: 5000 });
     } catch (err: any) {
       toast.error(err?.message || "Gagal mencatat absen pulang.");
     } finally {
@@ -740,6 +741,166 @@ function SettingsPage() {
     }
   };
 
+  // Helper untuk memformat alamat OSM menjadi detail, rapi, dan terstruktur
+  interface DetailedAddressItem {
+    lat: string;
+    lon: string;
+    display_name: string;
+    title: string;
+    subtitle: string;
+    fullAddress: string;
+    categoryLabel: string;
+  }
+
+  const formatDetailedOsmAddress = (item: any): DetailedAddressItem => {
+    if (!item) {
+      return {
+        lat: "0",
+        lon: "0",
+        display_name: "",
+        title: "Lokasi",
+        subtitle: "",
+        fullAddress: "",
+        categoryLabel: "Lokasi",
+      };
+    }
+
+    const addr = item.address || {};
+
+    // 1. Tentukan Nama Tempat / POI / Patokan Utama
+    const mainName =
+      item.name ||
+      addr.amenity ||
+      addr.shop ||
+      addr.building ||
+      addr.restaurant ||
+      addr.fast_food ||
+      addr.cafe ||
+      addr.supermarket ||
+      addr.marketplace ||
+      addr.commercial ||
+      addr.office ||
+      addr.hotel ||
+      addr.school ||
+      addr.mosque ||
+      addr.place_of_worship ||
+      (addr.road ? `${addr.road}${addr.house_number ? " No. " + addr.house_number : ""}` : null) ||
+      item.display_name?.split(",")[0]?.trim() ||
+      "Lokasi Terpilih";
+
+    // 2. Komponen Jalan & Nomor
+    const roadPart = addr.road
+      ? `${addr.road}${addr.house_number ? " No. " + addr.house_number : ""}`
+      : "";
+
+    // 3. Kelurahan / Desa
+    const villagePart =
+      addr.village ||
+      addr.suburb ||
+      addr.neighbourhood ||
+      addr.hamlet ||
+      addr.quarter ||
+      "";
+
+    // 4. Kecamatan
+    const districtPart =
+      addr.city_district ||
+      addr.district ||
+      addr.subdistrict ||
+      "";
+
+    // 5. Kota / Kabupaten
+    const cityPart =
+      addr.city ||
+      addr.town ||
+      addr.municipality ||
+      addr.county ||
+      "";
+
+    // 6. Provinsi
+    const statePart = addr.state || "";
+
+    // 7. Kode Pos
+    const postCode = addr.postcode || "";
+
+    // 8. Tentukan Label Kategori Tempat
+    let categoryLabel = "Lokasi";
+    const typeStr = `${item.type || ""} ${item.class || ""}`.toLowerCase();
+    if (
+      typeStr.includes("shop") ||
+      typeStr.includes("store") ||
+      typeStr.includes("restaurant") ||
+      typeStr.includes("fast_food") ||
+      typeStr.includes("cafe") ||
+      typeStr.includes("food")
+    ) {
+      categoryLabel = "Toko / Kuliner";
+    } else if (
+      typeStr.includes("building") ||
+      typeStr.includes("commercial") ||
+      typeStr.includes("office") ||
+      typeStr.includes("hotel") ||
+      typeStr.includes("residential")
+    ) {
+      categoryLabel = "Gedung / Ruko";
+    } else if (
+      typeStr.includes("highway") ||
+      typeStr.includes("road") ||
+      typeStr.includes("street")
+    ) {
+      categoryLabel = "Jalan / Gang";
+    } else if (
+      typeStr.includes("administrative") ||
+      typeStr.includes("boundary") ||
+      typeStr.includes("place")
+    ) {
+      categoryLabel = "Wilayah";
+    }
+
+    // Susun Subtitle & Full Address yang sangat rapi
+    const subParts: string[] = [];
+    if (roadPart && roadPart !== mainName) subParts.push(roadPart);
+    if (villagePart) {
+      subParts.push(
+        villagePart.startsWith("Kel.") || villagePart.startsWith("Desa")
+          ? villagePart
+          : `Kel. ${villagePart}`
+      );
+    }
+    if (districtPart) {
+      subParts.push(
+        districtPart.startsWith("Kec.")
+          ? districtPart
+          : `Kec. ${districtPart}`
+      );
+    }
+    if (cityPart) subParts.push(cityPart);
+    if (statePart) subParts.push(statePart);
+    if (postCode) subParts.push(postCode);
+
+    const subtitle = subParts.length > 0 ? subParts.join(", ") : item.display_name || "";
+
+    const fullAddress =
+      mainName && subtitle && !subtitle.includes(mainName)
+        ? `${mainName}, ${subtitle}`
+        : subtitle || mainName;
+
+    return {
+      lat: String(item.lat || "0"),
+      lon: String(item.lon || "0"),
+      display_name: item.display_name || "",
+      title: mainName,
+      subtitle,
+      fullAddress,
+      categoryLabel,
+    };
+  };
+
+  // State untuk pencarian alamat interaktif
+  const [addressSearchLoading, setAddressSearchLoading] = useState(false);
+  const [addressSearchResults, setAddressSearchResults] = useState<DetailedAddressItem[]>([]);
+  const [showAddressDropdown, setShowAddressDropdown] = useState(false);
+
   // Muat lokasi cabang terbaru dari Supabase saat settings dibuka
   useEffect(() => {
     loadBranchLocationsFromSupabase().then((locs) => {
@@ -757,7 +918,7 @@ function SettingsPage() {
     }
   }, [selectedAttBranch]);
 
-  // Fungsi geocoding alamat ke koordinat peta via OpenStreetMap Nominatim
+  // Fungsi geocoding alamat ke koordinat peta via OpenStreetMap Nominatim dengan addressdetails lengkap
   const searchAddressCoordinates = async (query: string, autoSelectFirst = false) => {
     const q = query.trim();
     if (!q || q.length < 3) {
@@ -769,30 +930,27 @@ function SettingsPage() {
     setAddressSearchLoading(true);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=id&limit=5`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          q
+        )}&addressdetails=1&extratags=1&namedetails=1&countrycodes=id&limit=8`,
         {
           headers: {
-            "Accept": "application/json",
+            Accept: "application/json",
           },
         }
       );
       if (!res.ok) throw new Error("Gagal menghubungi server pencarian peta");
-      const data = await res.json();
-      setAddressSearchResults(data || []);
-      setShowAddressDropdown(true);
+      const rawData = await res.json();
 
-      if (autoSelectFirst && data && data.length > 0) {
-        const first = data[0];
-        const newLat = parseFloat(first.lat);
-        const newLon = parseFloat(first.lon);
-        setAttMapForm((prev) => ({
-          ...prev,
-          latitude: Number(newLat.toFixed(6)),
-          longitude: Number(newLon.toFixed(6)),
-          address: first.display_name,
-        }));
-        setShowAddressDropdown(false);
-        toast.success(`Titik koordinat berhasil disetel ke: ${first.display_name.split(",")[0]}`);
+      const formattedList: DetailedAddressItem[] = (rawData || []).map((item: any) =>
+        formatDetailedOsmAddress(item)
+      );
+
+      setAddressSearchResults(formattedList);
+      setShowAddressDropdown(formattedList.length > 0);
+
+      if (autoSelectFirst && formattedList.length > 0) {
+        selectAddressResult(formattedList[0]);
       }
     } catch (err: any) {
       console.warn("Geocoding search warning:", err);
@@ -801,17 +959,17 @@ function SettingsPage() {
     }
   };
 
-  const selectAddressResult = (item: { lat: string; lon: string; display_name: string }) => {
+  const selectAddressResult = (item: DetailedAddressItem) => {
     const newLat = parseFloat(item.lat);
     const newLon = parseFloat(item.lon);
     setAttMapForm((prev) => ({
       ...prev,
       latitude: Number(newLat.toFixed(6)),
       longitude: Number(newLon.toFixed(6)),
-      address: item.display_name,
+      address: item.fullAddress,
     }));
     setShowAddressDropdown(false);
-    toast.success(`Titik lokasi map diperbarui: ${item.display_name.split(",")[0]}`);
+    toast.success(`Titik lokasi map disetel ke: ${item.title}`);
   };
 
   // Geser koordinat manual dengan presisi (arah mata angin)
@@ -823,12 +981,24 @@ function SettingsPage() {
     }));
   };
 
-  const handleSaveBranchLocation = () => {
-    saveBranchLocation({
-      ...attMapForm,
-      branch_name: selectedAttBranch,
-    });
-    toast.success(`Titik lokasi absensi untuk ${selectedAttBranch} berhasil disimpan & disinkronkan!`);
+  const [attSaving, setAttSaving] = useState(false);
+  const handleSaveBranchLocation = async () => {
+    setAttSaving(true);
+    try {
+      const ok = await saveBranchLocation({
+        ...attMapForm,
+        branch_name: selectedAttBranch,
+      });
+      if (ok) {
+        toast.success(`Titik lokasi absensi untuk ${selectedAttBranch} berhasil disimpan & disinkronkan ke Cloud!`);
+      } else {
+        toast.success(`Titik lokasi absensi untuk ${selectedAttBranch} disimpan di cache lokal & akan disinkronkan.`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal menyimpan titik lokasi");
+    } finally {
+      setAttSaving(false);
+    }
   };
 
   const handleGetAdminCurrentGps = () => {
@@ -1899,13 +2069,15 @@ function SettingsPage() {
 
                 {/* Dropdown Hasil Pencarian Alamat Otomatis */}
                 {showAddressDropdown && addressSearchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover text-popover-foreground rounded-xl border shadow-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-border">
-                    <div className="p-2 bg-muted/70 text-[10px] font-semibold text-muted-foreground px-3 flex justify-between items-center">
-                      <span>Pilih Lokasi yang Sesuai (Klik untuk pasang pin):</span>
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover text-popover-foreground rounded-xl border border-border shadow-2xl overflow-hidden max-h-72 overflow-y-auto divide-y divide-border">
+                    <div className="p-2.5 bg-muted/80 text-[11px] font-semibold text-muted-foreground px-3.5 flex justify-between items-center sticky top-0 backdrop-blur-md z-10 border-b border-border/60">
+                      <span className="flex items-center gap-1.5 text-foreground font-bold">
+                        <Search className="h-3 w-3 text-primary" /> Pilih Patokan / Lokasi yang Sesuai ({addressSearchResults.length} Ditemukan):
+                      </span>
                       <button
                         type="button"
                         onClick={() => setShowAddressDropdown(false)}
-                        className="text-muted-foreground hover:text-foreground font-bold px-1"
+                        className="text-muted-foreground hover:text-foreground font-bold px-1.5 py-0.5 rounded hover:bg-muted"
                       >
                         ✕
                       </button>
@@ -1914,15 +2086,25 @@ function SettingsPage() {
                       <div
                         key={i}
                         onClick={() => selectAddressResult(res)}
-                        className="p-2.5 text-xs hover:bg-primary/10 hover:text-primary cursor-pointer flex items-start gap-2.5 transition-colors"
+                        className="p-3 text-xs hover:bg-primary/10 hover:text-primary cursor-pointer flex items-start gap-3 transition-colors group"
                       >
-                        <MapPin className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-semibold truncate text-foreground">
-                            {res.display_name.split(",")[0]}
+                        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                          <MapPin className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">
+                              {res.title}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background border-border text-muted-foreground">
+                              {res.categoryLabel}
+                            </Badge>
                           </div>
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {res.display_name}
+                          <div className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+                            {res.subtitle}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground/70 font-mono pt-0.5 flex items-center gap-2">
+                            <span>📍 {parseFloat(res.lat).toFixed(5)}, {parseFloat(res.lon).toFixed(5)}</span>
                           </div>
                         </div>
                       </div>
@@ -2034,8 +2216,16 @@ function SettingsPage() {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button onClick={handleSaveBranchLocation} className="text-xs font-semibold">
-                <Save className="h-4 w-4 mr-1.5" /> Simpan Pengaturan Titik {selectedAttBranch}
+              <Button onClick={handleSaveBranchLocation} disabled={attSaving} className="text-xs font-semibold">
+                {attSaving ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" /> Menyimpan & Sinkronkan...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-1.5" /> Simpan Pengaturan Titik {selectedAttBranch}
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>

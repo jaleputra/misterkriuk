@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { syncTodayAttendanceFromCloud } from "@/lib/attendance";
 
 export type AppRole = "admin" | "cashier";
 
@@ -97,6 +98,10 @@ async function loadRoleForUser(user: User) {
         localStorage.setItem(`app_user_role_${uid}`, assignedRole);
         if (assignedBranch) localStorage.setItem(`app_user_branch_${uid}`, assignedBranch);
       }
+
+      if (assignedRole === "cashier") {
+        syncTodayAttendanceFromCloud(uid, email);
+      }
       return;
     }
 
@@ -112,6 +117,10 @@ async function loadRoleForUser(user: User) {
     if (typeof window !== "undefined") {
       localStorage.setItem(`app_user_role_${uid}`, fallbackRole);
       if (fallbackBranch) localStorage.setItem(`app_user_branch_${uid}`, fallbackBranch);
+    }
+
+    if (fallbackRole === "cashier") {
+      syncTodayAttendanceFromCloud(uid, email);
     }
 
     try {

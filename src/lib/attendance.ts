@@ -40,13 +40,13 @@ export interface AttendanceRecord {
   notes?: string;
 }
 
-// Default cabang locations jika belum disetel
+// Default cabang locations jika belum disetel di cloud
 export const DEFAULT_BRANCH_LOCATIONS: Record<string, BranchLocationConfig> = {
   "Cabang 1": {
     branch_name: "Cabang 1",
     latitude: -6.2088,
     longitude: 106.8456,
-    radius_meters: 100,
+    radius_meters: 150,
     address: "Pusat - Cabang 1",
     updated_at: new Date().toISOString(),
   },
@@ -54,7 +54,7 @@ export const DEFAULT_BRANCH_LOCATIONS: Record<string, BranchLocationConfig> = {
     branch_name: "Cabang 2",
     latitude: -6.2150,
     longitude: 106.8500,
-    radius_meters: 100,
+    radius_meters: 150,
     address: "Cabang 2",
     updated_at: new Date().toISOString(),
   },
@@ -89,7 +89,7 @@ export function calculateDistanceMeters(
 
 /**
  * Validasi apakah kasir berada dalam radius cabang dengan memperhitungkan toleransi akurasi GPS
- * (Akurasi GPS perangkat smartphone/laptop dalam ruangan sering berdeviasi hingga 20-30 meter)
+ * (Akurasi GPS perangkat smartphone/laptop dalam ruangan sering berdeviasi hingga 20-35 meter)
  */
 export function isCashierWithinBranchRadius(
   cashierLat: number,
@@ -100,10 +100,10 @@ export function isCashierWithinBranchRadius(
   gpsAccuracy?: number
 ): { isWithin: boolean; distance: number; effectiveDistance: number } {
   const distance = calculateDistanceMeters(cashierLat, cashierLon, branchLat, branchLon);
-  // Berikan toleransi akurasi GPS (maksimal buffer 35m untuk pengguna di dalam gedung/ruko)
+  // Berikan toleransi akurasi GPS (buffer maksimal hingga 35m jika perangkat kasir di dalam ruko/gedung)
   const accuracyBuffer = Math.min(Math.max(0, gpsAccuracy || 0), 35);
   const effectiveDistance = Math.max(0, distance - accuracyBuffer);
-  const isWithin = effectiveDistance <= radiusMeters;
+  const isWithin = effectiveDistance <= (radiusMeters || 150);
 
   return {
     isWithin,
@@ -113,7 +113,7 @@ export function isCashierWithinBranchRadius(
 }
 
 /**
- * Dapatkan konfigurasi lokasi untuk semua cabang
+ * Dapatkan konfigurasi lokasi untuk semua cabang dari cache lokal
  */
 export function getBranchLocations(): Record<string, BranchLocationConfig> {
   if (typeof window === "undefined") return DEFAULT_BRANCH_LOCATIONS;
@@ -133,91 +133,129 @@ export function getBranchLocations(): Record<string, BranchLocationConfig> {
 /**
  * Dapatkan konfigurasi lokasi satu cabang
  */
+/**
+ * Dapatkan konfigurasi lokasi satu cabang
+ */
 export function getBranchLocation(branchName: string): BranchLocationConfig {
   const all = getBranchLocations();
   if (all[branchName]) return all[branchName];
 
-  // Cari case-insensitive
-  const key = Object.keys(all).find((k) => k.toLowerCase() === branchName.toLowerCase());
+  // Cari case-insensitive & trimmed
+  const cleanName = (branchName || "").trim().toLowerCase();
+  const key = Object.keys(all).find((k) => k.trim().toLowerCase() === cleanName);
   if (key && all[key]) return all[key];
 
-  // Default fallback
-  return {
-    branch_name: branchName,
-    latitude: -6.2088,
-    longitude: 106.8456,
-    radius_meters: 100,
-    address: branchName,
-    updated_at: new Date().toISOString(),
-  };
-}
-
-/**
- * Simpan konfigurasi lokasi cabang secara lokal dan sinkronisasikan ke Supabase
- */
-export function saveBranchLocation(config: BranchLocationConfig): void {
-  if (typeof window === "undefined") return;
-  try {
-    const current = getBranchLocations();
-    const updatedConfig = {
-      ...config,
-      latitude: Number(config.latitude.toFixed(6)),
-      longitude: Number(config.longitude.toFixed(6)),
-      radius_meters: Number(config.radius_meters) || 100,
-      updated_at: new Date().toISOString(),
-    };
-    current[config.branch_name] = updatedConfig;
-    localStorage.setItem(BRANCH_CONFIG_KEY, JSON.stringify(current));
-
-    // Picu event agar komponen lain (seperti halaman absensi kasir) langsung terupdate tanpa reload
-    window.dispatchEvent(new CustomEvent("branch_location_updated", { detail: updatedConfig }));
-    window.dispatchEvent(new Event("attendance_updated"));
-    window.dispatchEvent(new Event("storage"));
-
-    // Sinkronkan ke database Supabase branches secara latar belakang
-    syncBranchLocationToSupabase(updatedConfig);
-  } catch (err) {
-    console.warn("Gagal menyimpan lokasi cabang:", err);
+  // Default fallback jika belum pernah disetel sama sekali
+  if (cleanName.includes("2")) {
+    return (
+      DEFAULT_BRANCH_LOCATIONS["Cabang 2"] || {
+        branch_name: "Cabang 2",
+        latitude: -6.215,
+        longitude: 106.85,
+        radius_meters: 150,
+        address: "Cabang 2",
+        updated_at: new Date().toISOString(),
+      }
+    );
   }
+
+  return (
+    DEFAULT_BRANCH_LOCATIONS["Cabang 1"] || {
+      branch_name: "Cabang 1",
+      latitude: -6.2088,
+      longitude: 106.8456,
+      radius_meters: 150,
+      address: "Cabang 1",
+      updated_at: new Date().toISOString(),
+    }
+  );
 }
 
 /**
- * Sinkronisasi konfigurasi lokasi cabang ke tabel branches di Supabase
+ * Sinkronisasi konfigurasi lokasi cabang ke Supabase (tabel branches per cabang unik)
  */
-export async function syncBranchLocationToSupabase(config: BranchLocationConfig): Promise<void> {
+export async function syncBranchLocationToSupabase(config: BranchLocationConfig): Promise<boolean> {
   try {
     const geoPayload = JSON.stringify({
       addr: config.address || config.branch_name,
       lat: config.latitude,
       lng: config.longitude,
-      radius: config.radius_meters,
+      radius: config.radius_meters || 150,
       updated_at: new Date().toISOString(),
     });
 
-    const { data: existing } = await supabase
+    const targetBranch = config.branch_name.trim();
+
+    // 1. Simpan/Update di tabel branches untuk cabang ini secara spesifik
+    const { data: existingBranches } = await supabase
       .from("branches")
-      .select("id, branch_name")
-      .ilike("branch_name", config.branch_name.trim())
+      .select("id, branch_name, shop_address")
+      .ilike("branch_name", targetBranch)
       .limit(1);
 
-    if (existing && existing.length > 0) {
+    if (existingBranches && existingBranches.length > 0) {
       await supabase
         .from("branches")
         .update({
           shop_address: geoPayload,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", existing[0].id);
+        .eq("id", existingBranches[0].id);
     } else {
       await supabase.from("branches").insert({
-        branch_name: config.branch_name.trim(),
+        branch_name: targetBranch,
         shop_name: "AMI Fried Chicken",
         shop_address: geoPayload,
       });
     }
+
+    // 2. Broadcast update ke semua perangkat kasir yang sedang aktif via Realtime Channel
+    try {
+      const channel = supabase.channel("attendance_realtime_sync");
+      channel.send({
+        type: "broadcast",
+        event: "branch_location_changed",
+        payload: config,
+      });
+    } catch {}
+
+    return true;
   } catch (err) {
-    console.warn("Sinkronisasi lokasi cabang ke Supabase diabaikan:", err);
+    console.warn("Sinkronisasi lokasi cabang ke Supabase diabaikan/gagal:", err);
+    return false;
   }
+}
+
+/**
+ * Simpan konfigurasi lokasi cabang secara lokal dan sinkronisasikan ke Supabase Cloud
+ */
+export async function saveBranchLocation(config: BranchLocationConfig): Promise<boolean> {
+  const updatedConfig: BranchLocationConfig = {
+    ...config,
+    branch_name: config.branch_name.trim(),
+    latitude: Number(config.latitude.toFixed(6)),
+    longitude: Number(config.longitude.toFixed(6)),
+    radius_meters: Number(config.radius_meters) || 150,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (typeof window !== "undefined") {
+    try {
+      const current = getBranchLocations();
+      current[updatedConfig.branch_name] = updatedConfig;
+      localStorage.setItem(BRANCH_CONFIG_KEY, JSON.stringify(current));
+
+      // Picu event lokal
+      window.dispatchEvent(new CustomEvent("branch_location_updated", { detail: updatedConfig }));
+      window.dispatchEvent(new Event("attendance_updated"));
+      window.dispatchEvent(new Event("storage"));
+    } catch (e) {
+      console.warn("Gagal simpan ke localStorage:", e);
+    }
+  }
+
+  // Sinkronkan ke cloud Supabase
+  return await syncBranchLocationToSupabase(updatedConfig);
 }
 
 /**
@@ -225,31 +263,33 @@ export async function syncBranchLocationToSupabase(config: BranchLocationConfig)
  */
 export async function loadBranchLocationsFromSupabase(): Promise<Record<string, BranchLocationConfig>> {
   try {
-    const { data, error } = await supabase.from("branches").select("*");
-    if (error || !data) return getBranchLocations();
-
     const localMap = getBranchLocations();
     let hasUpdates = false;
 
-    data.forEach((b: any) => {
-      if (!b.branch_name) return;
-      if (b.shop_address && b.shop_address.includes('"lat"')) {
-        try {
-          const parsed = JSON.parse(b.shop_address);
-          if (parsed.lat && parsed.lng) {
-            localMap[b.branch_name] = {
-              branch_name: b.branch_name,
-              latitude: Number(parsed.lat),
-              longitude: Number(parsed.lng),
-              radius_meters: Number(parsed.radius) || 100,
-              address: parsed.addr || b.shop_address,
-              updated_at: parsed.updated_at || b.updated_at,
-            };
-            hasUpdates = true;
-          }
-        } catch {}
-      }
-    });
+    // Ambil semua data cabang dari tabel branches secara ketat per nama cabang
+    const { data: branchRows, error: branchErr } = await supabase.from("branches").select("*");
+    if (!branchErr && branchRows && branchRows.length > 0) {
+      branchRows.forEach((b: any) => {
+        if (!b.branch_name) return;
+        const bName = b.branch_name.trim();
+        if (b.shop_address && b.shop_address.includes('"lat"')) {
+          try {
+            const parsed = JSON.parse(b.shop_address);
+            if (typeof parsed.lat === "number" && typeof parsed.lng === "number") {
+              localMap[bName] = {
+                branch_name: bName,
+                latitude: Number(parsed.lat),
+                longitude: Number(parsed.lng),
+                radius_meters: Number(parsed.radius) || 150,
+                address: parsed.addr || b.shop_address,
+                updated_at: parsed.updated_at || b.updated_at,
+              };
+              hasUpdates = true;
+            }
+          } catch {}
+        }
+      });
+    }
 
     if (hasUpdates && typeof window !== "undefined") {
       localStorage.setItem(BRANCH_CONFIG_KEY, JSON.stringify(localMap));
@@ -257,13 +297,14 @@ export async function loadBranchLocationsFromSupabase(): Promise<Record<string, 
     }
 
     return localMap;
-  } catch {
+  } catch (err) {
+    console.warn("loadBranchLocationsFromSupabase warning:", err);
     return getBranchLocations();
   }
 }
 
 /**
- * Format tanggal hari ini dalam format YYYY-MM-DD
+ * Format tanggal hari ini dalam format YYYY-MM-DD (waktu lokal)
  */
 export function getTodayDateString(): string {
   const now = new Date();
@@ -274,7 +315,7 @@ export function getTodayDateString(): string {
 }
 
 /**
- * Ambil semua riwayat absensi kasir
+ * Ambil semua riwayat absensi kasir dari cache lokal
  */
 export function getAttendanceRecords(): AttendanceRecord[] {
   if (typeof window === "undefined") return [];
@@ -327,7 +368,72 @@ export function getTodayAttendance(
 }
 
 /**
- * Catat absensi kasir baru
+ * Sinkronisasi data absensi kasir hari ini dari Supabase Cloud (Multi-Device Sync)
+ * Mengambil record absensi kasir berdasarkan akun di database sehingga jika kasir
+ * pindah perangkat (misal dari HP ke laptop/komputer kasir), status absensi tetap aktif.
+ */
+export async function syncTodayAttendanceFromCloud(
+  userId?: string | null,
+  userEmail?: string | null
+): Promise<AttendanceRecord | null> {
+  if (!userId && !userEmail) return null;
+  const today = getTodayDateString();
+  const normalizedEmail = userEmail?.toLowerCase().trim();
+
+  try {
+    // 1. Coba cari di tabel daily_reports untuk hari ini
+    const { data: reports } = await supabase
+      .from("daily_reports")
+      .select("*")
+      .eq("report_date", today)
+      .order("created_at", { ascending: false });
+
+    if (reports && reports.length > 0) {
+      for (const rep of reports) {
+        if (rep.note && rep.note.includes('"clock_in_time"')) {
+          try {
+            const parsedAtt = JSON.parse(rep.note) as AttendanceRecord;
+            const matchesUser =
+              (userId && (parsedAtt.user_id === userId || rep.created_by === userId)) ||
+              (normalizedEmail &&
+                parsedAtt.user_email &&
+                parsedAtt.user_email.toLowerCase().trim() === normalizedEmail);
+
+            if (matchesUser && parsedAtt.date === today) {
+              // Update local cache
+              const currentList = getAttendanceRecords();
+              const merged = [
+                parsedAtt,
+                ...currentList.filter(
+                  (r) =>
+                    !(
+                      r.date === today &&
+                      ((userId && r.user_id === userId) ||
+                        (normalizedEmail && r.user_email?.toLowerCase().trim() === normalizedEmail))
+                    )
+                ),
+              ];
+              if (typeof window !== "undefined") {
+                localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(merged));
+                window.dispatchEvent(new Event("attendance_updated"));
+                window.dispatchEvent(new Event("storage"));
+              }
+              return parsedAtt;
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("syncTodayAttendanceFromCloud error:", err);
+  }
+
+  return getTodayAttendance(userId, userEmail);
+}
+
+/**
+ * Catat absensi kasir baru (Masuk Shift - Cukup 1 Kali Per Hari Saja)
+ * Menyimpan ke cache lokal dan langsung menyinkronkan ke Supabase Cloud
  */
 export async function recordAttendance(payload: {
   userId: string;
@@ -338,6 +444,20 @@ export async function recordAttendance(payload: {
   longitude: number;
   notes?: string;
 }): Promise<AttendanceRecord> {
+  const today = getTodayDateString();
+  const normalizedEmail = payload.userEmail.toLowerCase().trim();
+
+  // 1. Cek apakah kasir sudah pernah absen hari ini (baik di perangkat ini maupun di cloud)
+  const existingLocal = getTodayAttendance(payload.userId, payload.userEmail);
+  if (existingLocal) {
+    return existingLocal;
+  }
+
+  const existingCloud = await syncTodayAttendanceFromCloud(payload.userId, payload.userEmail);
+  if (existingCloud) {
+    return existingCloud;
+  }
+
   const branchLoc = getBranchLocation(payload.branchName);
   const distance = calculateDistanceMeters(
     payload.latitude,
@@ -346,10 +466,8 @@ export async function recordAttendance(payload: {
     branchLoc.longitude
   );
 
-  const isWithinRadius = distance <= branchLoc.radius_meters;
+  const isWithinRadius = distance <= (branchLoc.radius_meters || 150);
   const now = new Date();
-  const today = getTodayDateString();
-  const normalizedEmail = payload.userEmail.toLowerCase().trim();
 
   const record: AttendanceRecord = {
     id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -385,25 +503,49 @@ export async function recordAttendance(payload: {
     ];
     localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(updated));
     window.dispatchEvent(new Event("attendance_updated"));
+    window.dispatchEvent(new Event("storage"));
   }
 
-  // Coba simpan ke Supabase attendances table jika ada
+  // Sinkronkan ke Supabase Cloud (daily_reports & realtime broadcast)
   try {
-    await supabase.from("attendances" as any).insert({
-      id: record.id,
-      user_id: record.user_id,
-      user_email: record.user_email,
-      branch_name: record.branch_name,
-      date: record.date,
-      clock_in_time: record.clock_in_time,
-      latitude: record.latitude,
-      longitude: record.longitude,
-      distance_meters: record.distance_meters,
-      status: record.status,
-      is_within_radius: record.is_within_radius,
-    } as any);
+    const notePayload = JSON.stringify(record);
+
+    // Coba update atau insert ke daily_reports per akun kasir
+    const { data: existingReport } = await supabase
+      .from("daily_reports")
+      .select("id")
+      .eq("report_date", today)
+      .eq("created_by", payload.userId)
+      .limit(1);
+
+    if (existingReport && existingReport.length > 0 && existingReport[0].id) {
+      await supabase
+        .from("daily_reports")
+        .update({
+          note: notePayload,
+          branch_name: payload.branchName,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", existingReport[0].id);
+    } else {
+      await supabase.from("daily_reports").insert({
+        report_date: today,
+        initial_cash: 0,
+        note: notePayload,
+        created_by: payload.userId,
+        branch_name: payload.branchName,
+      });
+    }
+
+    // Broadcast ke channel realtime
+    const channel = supabase.channel("attendance_realtime_sync");
+    channel.send({
+      type: "broadcast",
+      event: "cashier_attendance_updated",
+      payload: record,
+    });
   } catch (err) {
-    // Ignore if table does not exist
+    console.warn("Cloud sync recordAttendance warning:", err);
   }
 
   return record;
@@ -460,7 +602,7 @@ export async function recordClockOut(payload: {
     branchLoc.latitude,
     branchLoc.longitude
   );
-  const isWithinRadius = distance <= branchLoc.radius_meters;
+  const isWithinRadius = distance <= (branchLoc.radius_meters || 150);
   const now = new Date();
 
   // Jika kasir masih berada dalam sesi istirahat saat absen pulang, otomatis selesaikan sesi istirahat tersebut
@@ -494,15 +636,32 @@ export async function recordClockOut(payload: {
     window.dispatchEvent(new Event("attendance_updated"));
   }
 
-  // Update Supabase jika tabel tersedia
+  // Update ke Supabase Cloud
   try {
-    await supabase
-      .from("attendances" as any)
-      .update({
-        clock_out_time: updatedRecord.clock_out_time,
-        status: updatedRecord.status,
-      } as any)
-      .eq("id", updatedRecord.id);
+    const notePayload = JSON.stringify(updatedRecord);
+    const { data: existingReport } = await supabase
+      .from("daily_reports")
+      .select("id")
+      .eq("report_date", today)
+      .eq("created_by", payload.userId)
+      .limit(1);
+
+    if (existingReport && existingReport.length > 0 && existingReport[0].id) {
+      await supabase
+        .from("daily_reports")
+        .update({
+          note: notePayload,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", existingReport[0].id);
+    }
+
+    const channel = supabase.channel("attendance_realtime_sync");
+    channel.send({
+      type: "broadcast",
+      event: "cashier_attendance_updated",
+      payload: updatedRecord,
+    });
   } catch {}
 
   return updatedRecord;
@@ -556,6 +715,16 @@ export async function startBreak(payload: {
     localStorage.setItem(ATTENDANCE_RECORDS_KEY, JSON.stringify(records));
     window.dispatchEvent(new Event("attendance_updated"));
   }
+
+  // Cloud sync
+  try {
+    const notePayload = JSON.stringify(updatedRecord);
+    await supabase
+      .from("daily_reports")
+      .update({ note: notePayload })
+      .eq("report_date", today)
+      .eq("created_by", payload.userId);
+  } catch {}
 
   return updatedRecord;
 }
@@ -615,6 +784,16 @@ export async function endBreak(payload: {
     window.dispatchEvent(new Event("attendance_updated"));
   }
 
+  // Cloud sync
+  try {
+    const notePayload = JSON.stringify(updatedRecord);
+    await supabase
+      .from("daily_reports")
+      .update({ note: notePayload })
+      .eq("report_date", today)
+      .eq("created_by", payload.userId);
+  } catch {}
+
   return updatedRecord;
 }
 
@@ -655,4 +834,5 @@ export function getTotalBreakMinutes(breaks?: AttendanceBreak[]): number {
     return acc;
   }, 0);
 }
+
 

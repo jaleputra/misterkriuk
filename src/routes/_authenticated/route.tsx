@@ -4,22 +4,31 @@ import { useAuth } from "@/hooks/useAuth";
 import { BottomNav } from "@/components/BottomNav";
 import { AppHeader } from "@/components/AppHeader";
 import { Toaster } from "@/components/ui/sonner";
-import { hasCashierCheckedInToday, hasCashierClockedOutToday } from "@/lib/attendance";
+import { hasCashierCheckedInToday, syncTodayAttendanceFromCloud } from "@/lib/attendance";
 import { useEffect, useState } from "react";
-import { Coffee } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
+    let currentUser: any = null;
     const { data: sessionData } = await supabase.auth.getSession();
     if (sessionData?.session?.user) {
-      return { user: sessionData.session.user };
+      currentUser = sessionData.session.user;
+    } else {
+      const { data: userData, error } = await supabase.auth.getUser();
+      if (error || !userData?.user) {
+        throw redirect({ to: "/auth" });
+      }
+      currentUser = userData.user;
     }
-    const { data: userData, error } = await supabase.auth.getUser();
-    if (error || !userData?.user) {
-      throw redirect({ to: "/auth" });
+
+    if (currentUser?.id) {
+      try {
+        await syncTodayAttendanceFromCloud(currentUser.id, currentUser.email);
+      } catch {}
     }
-    return { user: userData.user };
+
+    return { user: currentUser };
   },
   component: AuthedLayout,
 });
@@ -48,11 +57,18 @@ function AuthedLayout() {
     const handleUpdate = () => setAttRevision((v) => v + 1);
     window.addEventListener("attendance_updated", handleUpdate);
     window.addEventListener("storage", handleUpdate);
+
+    if (user?.id) {
+      syncTodayAttendanceFromCloud(user.id, user.email).then((att) => {
+        if (att) setAttRevision((v) => v + 1);
+      });
+    }
+
     return () => {
       window.removeEventListener("attendance_updated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
-  }, []);
+  }, [user?.id, user?.email]);
 
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const effectiveRole: "admin" | "cashier" = isExplicitKasir
@@ -72,18 +88,11 @@ function AuthedLayout() {
   ];
   const isAllowed = allowedCashierRoutes.some((route) => pathname.startsWith(route));
   const hasCheckedIn = effectiveRole === "cashier" ? hasCashierCheckedInToday(user?.id, user?.email) : true;
-  const hasClockedOut = effectiveRole === "cashier" ? hasCashierClockedOutToday(user?.id, user?.email) : false;
 
-  // Route protection effect using router navigation instead of window.location.replace
+  // Route protection effect using router navigation
   useEffect(() => {
     if (loading) return;
     if (effectiveRole === "cashier") {
-      if (hasClockedOut) {
-        supabase.auth.signOut().then(() => {
-          navigate({ to: "/auth", replace: true });
-        });
-        return;
-      }
       if (!hasCheckedIn && !pathname.startsWith("/attendance")) {
         navigate({ to: "/attendance", replace: true });
         return;
@@ -93,24 +102,11 @@ function AuthedLayout() {
         return;
       }
     }
-  }, [effectiveRole, hasClockedOut, hasCheckedIn, pathname, isAllowed, loading, navigate, attRevision]);
+  }, [effectiveRole, hasCheckedIn, pathname, isAllowed, loading, navigate, attRevision]);
 
   if (loading) {
     return (
       <div className="min-h-screen grid place-items-center text-muted-foreground">Memuat…</div>
-    );
-  }
-
-  // Guard loading placeholder for cashiers who have already clocked out today
-  if (effectiveRole === "cashier" && hasClockedOut) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center bg-background">
-        <div className="h-12 w-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center mb-3 border border-amber-500/20 shadow-xs">
-          <Coffee className="h-6 w-6" />
-        </div>
-        <h2 className="text-lg font-bold text-foreground mb-1">Shift Hari Ini Telah Selesai</h2>
-        <p className="text-sm font-medium text-muted-foreground">istirahatlah, besok mulai bekerja lagi</p>
-      </div>
     );
   }
 

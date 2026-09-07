@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Coffee } from "lucide-react";
-import { hasCashierCheckedInToday, hasCashierClockedOutToday } from "@/lib/attendance";
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { hasCashierCheckedInToday, syncTodayAttendanceFromCloud } from "@/lib/attendance";
 
 function isCashierUser(user?: { id?: string; email?: string } | null): boolean {
   if (!user?.email) return false;
@@ -23,16 +23,15 @@ function isCashierUser(user?: { id?: string; email?: string } | null): boolean {
   return role !== "admin";
 }
 
-function checkCashierClockedOutToday(user?: { id?: string; email?: string } | null): boolean {
-  if (!user) return false;
-  if (!isCashierUser(user)) return false;
-  return hasCashierClockedOutToday(user.id, user.email);
-}
-
-function getPostLoginDestination(user?: { id?: string; email?: string } | null): string {
+async function resolvePostLoginDestination(user?: { id?: string; email?: string } | null): Promise<string> {
   if (!user?.email) return "/transaction";
   const isKasir = isCashierUser(user);
   if (isKasir) {
+    if (user.id) {
+      try {
+        await syncTodayAttendanceFromCloud(user.id, user.email);
+      } catch {}
+    }
     const checkedIn = hasCashierCheckedInToday(user.id, user.email);
     if (!checkedIn) return "/attendance";
   }
@@ -43,12 +42,8 @@ export const Route = createFileRoute("/auth")({
   ssr: false,
   beforeLoad: async () => {
     const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      if (checkCashierClockedOutToday(data.session.user)) {
-        await supabase.auth.signOut();
-        return;
-      }
-      const dest = getPostLoginDestination(data.session.user);
+    if (data.session?.user) {
+      const dest = await resolvePostLoginDestination(data.session.user);
       throw redirect({ to: dest });
     }
   },
@@ -62,18 +57,11 @@ function AuthPage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [clockedOutNotice, setClockedOutNotice] = useState(false);
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
       if (s?.user) {
-        if (checkCashierClockedOutToday(s.user)) {
-          await supabase.auth.signOut();
-          setClockedOutNotice(true);
-          toast.error("istirahatlah, besok mulai bekerja lagi", { duration: 6000 });
-          return;
-        }
-        const dest = getPostLoginDestination(s.user);
+        const dest = await resolvePostLoginDestination(s.user);
         navigate({ to: dest, replace: true });
       }
     });
@@ -83,7 +71,6 @@ function AuthPage() {
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setClockedOutNotice(false);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -100,13 +87,7 @@ function AuthPage() {
         return;
       }
       if (data?.session) {
-        if (checkCashierClockedOutToday(data.session.user)) {
-          await supabase.auth.signOut();
-          setClockedOutNotice(true);
-          toast.error("istirahatlah, besok mulai bekerja lagi", { duration: 6000 });
-          return;
-        }
-        const dest = getPostLoginDestination(data.session.user);
+        const dest = await resolvePostLoginDestination(data.session.user);
         if (dest === "/attendance") {
           toast.success("Login berhasil! Silakan lakukan absen terlebih dahulu.");
         } else {
@@ -141,7 +122,7 @@ function AuthPage() {
         return;
       }
       if (data?.session) {
-        const dest = getPostLoginDestination(data.session.user);
+        const dest = await resolvePostLoginDestination(data.session.user);
         toast.success("Pendaftaran berhasil! Membuka aplikasi...");
         navigate({ to: dest, replace: true });
       } else if (data?.user) {
@@ -151,7 +132,7 @@ function AuthPage() {
           password,
         });
         if (signInData?.session) {
-          const dest = getPostLoginDestination(signInData.session.user);
+          const dest = await resolvePostLoginDestination(signInData.session.user);
           toast.success("Pendaftaran & Login berhasil! Membuka aplikasi...");
           navigate({ to: dest, replace: true });
         } else {
@@ -212,15 +193,6 @@ function AuthPage() {
               </p>
             </CardHeader>
             <CardContent className="px-6 pb-6 pt-2">
-              {clockedOutNotice && (
-                <div className="mb-4 p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in duration-300">
-                  <Coffee className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <div>
-                    <p className="font-bold">Shift Selesai Hari Ini</p>
-                    <p className="font-normal text-muted-foreground mt-0.5">istirahatlah, besok mulai bekerja lagi</p>
-                  </div>
-                </div>
-              )}
               <Tabs defaultValue="signin" className="w-full">
                 <TabsList className="grid grid-cols-2 mb-5">
                   <TabsTrigger value="signin">
