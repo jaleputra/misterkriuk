@@ -3,6 +3,7 @@ import { useAuth, refreshAuthRole, inferBranchFromEmail } from "@/hooks/useAuth"
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { AttendanceLocationPickerMap } from "@/components/AttendanceLocationPickerMap";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -899,14 +900,6 @@ function SettingsPage() {
       return true;
     });
   }, [attRecords, historyBranchFilter, historyDateFilter, historySearch]);
-
-  const mapPreviewUrl = useMemo(() => {
-    const delta = 0.003;
-    const lat = attMapForm.latitude;
-    const lng = attMapForm.longitude;
-    const bbox = `${lng - delta}%2C${lat - delta}%2C${lng + delta}%2C${lat + delta}`;
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
-  }, [attMapForm.latitude, attMapForm.longitude]);
 
   const [evForm, setEvForm] = useState({
     name: "",
@@ -1944,27 +1937,33 @@ function SettingsPage() {
               </a>
             </div>
 
-            {/* Interactive Preview OpenStreetMap */}
+            {/* Interactive Leaflet Map for Direct Manual Pointing and Geofencing */}
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between flex-wrap gap-1">
                 <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-primary" /> Preview Peta Titik {selectedAttBranch}:
+                  <MapPin className="h-3.5 w-3.5 text-primary" /> Peta Interaktif Titik Absen {selectedAttBranch}:
                 </span>
                 <span className="text-[11px] text-muted-foreground font-mono">
-                  {attMapForm.latitude.toFixed(6)}, {attMapForm.longitude.toFixed(6)}
+                  {attMapForm.latitude.toFixed(6)}, {attMapForm.longitude.toFixed(6)} (Radius: {attMapForm.radius_meters}m)
                 </span>
               </div>
-              <div className="w-full h-56 sm:h-64 rounded-xl overflow-hidden border border-border bg-muted relative shadow-inner">
-                <iframe
-                  title="Preview Koordinat Cabang"
-                  src={mapPreviewUrl}
-                  className="w-full h-full border-0"
-                  loading="lazy"
-                />
-                <div className="absolute top-2 left-2 bg-card/90 backdrop-blur-xs px-2.5 py-1 rounded-md text-[11px] font-medium border shadow-xs">
-                  Titik Cabang: {attMapForm.latitude.toFixed(5)}, {attMapForm.longitude.toFixed(5)} (Radius: {attMapForm.radius_meters}m)
-                </div>
-              </div>
+
+              {/* Komponen Peta Interaktif dengan Klik Langsung & Draggable Marker */}
+              <AttendanceLocationPickerMap
+                latitude={attMapForm.latitude}
+                longitude={attMapForm.longitude}
+                radiusMeters={attMapForm.radius_meters}
+                branchName={selectedAttBranch}
+                address={attMapForm.address}
+                onChangeCoordinates={({ latitude, longitude, address: newAddress }) => {
+                  setAttMapForm((prev) => ({
+                    ...prev,
+                    latitude,
+                    longitude,
+                    ...(newAddress ? { address: newAddress } : {}),
+                  }));
+                }}
+              />
 
               {/* Kontrol Geser Pin Peta Mikro (Fine-Tuning) */}
               <div className="flex items-center justify-between flex-wrap gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/80 text-xs">
