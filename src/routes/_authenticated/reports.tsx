@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/supabase-paginate";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, inferBranchFromEmail } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,7 @@ import {
   Clock,
   Calendar,
   RotateCcw,
+  CheckCircle2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -219,6 +220,10 @@ function ReportsPage() {
     return map;
   }, [userRoles]);
 
+  const cashierBranch = useMemo(() => {
+    return branchName || (user?.id ? cashierBranchMap[user.id] : null) || inferBranchFromEmail(user?.email) || "Cabang 1";
+  }, [branchName, user?.id, user?.email, cashierBranchMap]);
+
   const [dayStart, dayEnd] = useMemo(() => {
     const [year, month, day] = date.split("-").map(Number);
     const start = new Date(year, month - 1, day, 0, 0, 0, 0);
@@ -229,19 +234,46 @@ function ReportsPage() {
   const { data: dailyReports = [] } = useQuery({
     queryKey: ["daily_reports", date],
     queryFn: async () => {
+      const localKey = `app_daily_reports_${date}`;
+      let localList: any[] = [];
+      try {
+        const raw = typeof window !== "undefined" ? localStorage.getItem(localKey) : null;
+        if (raw) localList = JSON.parse(raw);
+      } catch {}
+
       try {
         const { data, error } = await supabase
           .from("daily_reports")
           .select("*")
           .eq("report_date", date);
+
         if (error) {
-          const localData = typeof window !== "undefined" ? localStorage.getItem(`app_daily_reports_${date}`) : null;
-          return localData ? JSON.parse(localData) : [];
+          console.warn("daily_reports fetch warning:", error);
+          return localList;
         }
-        return data ?? [];
-      } catch {
-        const localData = typeof window !== "undefined" ? localStorage.getItem(`app_daily_reports_${date}`) : null;
-        return localData ? JSON.parse(localData) : [];
+
+        const dbList = data ?? [];
+        // Merge dbList and localList so no branch data is lost
+        const mergedMap = new Map<string, any>();
+        localList.forEach((item: any) => {
+          const b = item.branch_name?.trim() || "Cabang 1";
+          mergedMap.set(b.toLowerCase(), item);
+        });
+        dbList.forEach((item: any) => {
+          const b = item.branch_name?.trim() || "Cabang 1";
+          mergedMap.set(b.toLowerCase(), item);
+        });
+
+        const merged = Array.from(mergedMap.values());
+        if (typeof window !== "undefined" && merged.length > 0) {
+          try {
+            localStorage.setItem(localKey, JSON.stringify(merged));
+          } catch {}
+        }
+        return merged;
+      } catch (err) {
+        console.warn("daily_reports query exception:", err);
+        return localList;
       }
     },
     enabled: role === "admin" || role === "cashier",
@@ -326,6 +358,8 @@ function ReportsPage() {
     (dailyReports as any[]).forEach((r: any) => {
       if (r.branch_name?.trim()) set.add(r.branch_name.trim());
     });
+    set.add("Cabang 1");
+    set.add("Cabang 2");
     return Array.from(set);
   }, [branches, userRoles, txs, entries, dailyReports]);
 
@@ -349,7 +383,7 @@ function ReportsPage() {
 
   // State untuk memilih cabang yang akan diinputkan kas awal oleh Admin
   const [adminInputBranch, setAdminInputBranch] = useState<string>("");
-  const activeAdminInputBranch = adminInputBranch || (selectedBranch !== "all" ? selectedBranch : (branchOptions[0] || ""));
+  const activeAdminInputBranch = adminInputBranch || (selectedBranch !== "all" ? selectedBranch : (branchOptions[0] || "Cabang 1"));
 
   const handleSelectBranchFilter = (val: string) => {
     setSelectedBranch(val);
@@ -370,21 +404,20 @@ function ReportsPage() {
   // Laporan yang relevan dengan form input saat ini
   const currentFormReport = useMemo(() => {
     if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
       return (dailyReports as any[]).find((r) => {
-        if (user?.id && r.created_by === user.id) return true;
         const rb = getReportBranch(r);
-        if (myBranch && rb) return branchMatch(rb, myBranch);
+        if (rb && branchMatch(rb, cashierBranch)) return true;
+        if (user?.id && r.created_by === user.id && !rb) return true;
         return false;
       });
     }
     return (dailyReports as any[]).find((r) => {
       const rb = getReportBranch(r);
-      return branchMatch(rb, activeAdminInputBranch);
+      return rb && branchMatch(rb, activeAdminInputBranch);
     });
-  }, [dailyReports, role, branchName, activeAdminInputBranch, user?.id, branchOptions, cashierBranchMap]);
+  }, [dailyReports, role, cashierBranch, activeAdminInputBranch, user?.id]);
 
-  const isInitialCashLocked = currentFormReport?.initial_cash != null;
+  const isInitialCashLocked = role === "cashier" && currentFormReport?.initial_cash != null;
 
   useEffect(() => {
     if (currentFormReport?.initial_cash != null) {
@@ -393,32 +426,30 @@ function ReportsPage() {
       setInitialCashInput("");
     }
     setNote(currentFormReport?.note ?? "");
-  }, [currentFormReport, date, activeAdminInputBranch]);
+  }, [currentFormReport, date, activeAdminInputBranch, cashierBranch]);
 
   // Filter transaksi berdasarkan role dan pilihan cabang
   const filteredTxs = useMemo(() => {
     if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
       return (txs as any[]).filter((t) => {
         if (user?.id && t.cashier_id === user.id) return true;
         const tb = getTxBranch(t);
-        if (myBranch && tb) return branchMatch(tb, myBranch);
+        if (cashierBranch && tb) return branchMatch(tb, cashierBranch);
         return false;
       });
     }
     if (selectedBranch === "all") return txs as any[];
     return (txs as any[]).filter((t) => branchMatch(getTxBranch(t), selectedBranch));
-  }, [txs, role, branchName, selectedBranch, cashierBranchMap, user?.id]);
+  }, [txs, role, cashierBranch, selectedBranch, cashierBranchMap, user?.id]);
 
   // Filter pengeluaran berdasarkan role, pilihan cabang, dan rentang waktu (jam & menit)
   const filteredEntries = useMemo(() => {
     let list = entries as any[];
     if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
       list = list.filter((e) => {
         if (user?.id && e.created_by === user.id) return true;
         const eb = getEntryBranch(e);
-        if (myBranch && eb) return branchMatch(eb, myBranch);
+        if (cashierBranch && eb) return branchMatch(eb, cashierBranch);
         return false;
       });
     } else if (role === "admin" && selectedBranch !== "all") {
@@ -430,7 +461,7 @@ function ReportsPage() {
     }
 
     return list;
-  }, [entries, role, branchName, selectedBranch, cashierBranchMap, user?.id, startTime, endTime]);
+  }, [entries, role, cashierBranch, selectedBranch, cashierBranchMap, user?.id, startTime, endTime]);
 
   // Transaksi partner dipisah dari laporan harian
   const partnerTxs = useMemo(
@@ -531,11 +562,10 @@ function ReportsPage() {
   // Kas Awal sesuai filter yang dipilih
   const initialCash = useMemo(() => {
     if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
       const rep = (dailyReports as any[]).find((r) => {
-        if (user?.id && r.created_by === user.id) return true;
         const rb = getReportBranch(r);
-        if (myBranch && rb) return branchMatch(rb, myBranch);
+        if (rb && branchMatch(rb, cashierBranch)) return true;
+        if (user?.id && r.created_by === user.id && !rb) return true;
         return false;
       });
       return Number(rep?.initial_cash ?? 0);
@@ -543,13 +573,24 @@ function ReportsPage() {
     if (selectedBranch !== "all") {
       const rep = (dailyReports as any[]).find((r) => {
         const rb = getReportBranch(r);
-        return branchMatch(rb, selectedBranch);
+        return rb && branchMatch(rb, selectedBranch);
       });
       return Number(rep?.initial_cash ?? 0);
     }
     // Semua Cabang: akumulasikan kas awal dari semua cabang
     return (dailyReports as any[]).reduce((sum: number, r: any) => sum + Number(r.initial_cash ?? 0), 0);
-  }, [dailyReports, role, branchName, selectedBranch, user?.id, branchOptions, cashierBranchMap]);
+  }, [dailyReports, role, cashierBranch, selectedBranch, user?.id]);
+
+  const branchInitialCashBreakdown = useMemo(() => {
+    if (selectedBranch !== "all") return "";
+    return branchOptions
+      .map((b) => {
+        const rep = (dailyReports as any[]).find((r) => branchMatch(getReportBranch(r), b));
+        const cash = Number(rep?.initial_cash ?? 0);
+        return `${b}: ${rupiah(cash)}`;
+      })
+      .join(" · ");
+  }, [selectedBranch, branchOptions, dailyReports]);
 
   const todayResult = initialCash + totalIn - totalOut;
   const totalCashResult = initialCash + cashIn - cashOut;
@@ -558,83 +599,130 @@ function ReportsPage() {
   const save = useMutation({
     mutationFn: async () => {
       const { data: u } = await supabase.auth.getUser();
-      const targetBranch = role === "cashier" ? (branchName || cashierBranchMap[u.user?.id || ""] || null) : (activeAdminInputBranch || null);
-      if (role === "admin" && !targetBranch) {
-        throw new Error("Admin wajib memilih cabang untuk menyimpan kas awal!");
+      const targetBranch =
+        role === "cashier"
+          ? cashierBranch
+          : (activeAdminInputBranch || "Cabang 1");
+
+      if (!targetBranch) {
+        throw new Error("Pilih cabang untuk menyimpan kas awal!");
       }
 
       const existing = (dailyReports as any[]).find((r) => {
-        if (role === "cashier") {
-          if (u.user?.id && r.created_by === u.user.id) return true;
-          const rb = getReportBranch(r);
-          if (targetBranch && rb) return branchMatch(rb, targetBranch);
-          return false;
-        }
         const rb = getReportBranch(r);
-        return branchMatch(rb, targetBranch);
+        if (rb && branchMatch(rb, targetBranch)) return true;
+        if (role === "cashier" && u.user?.id && r.created_by === u.user.id && !rb) return true;
+        return false;
       });
 
-      const isLocked = existing?.initial_cash != null;
-      if (isLocked && role === "cashier") {
+      const isLocked = role === "cashier" && existing?.initial_cash != null;
+      if (isLocked) {
         throw new Error("Kas awal sudah tersimpan dan tidak dapat diubah lagi.");
       }
 
-      const cashVal = isLocked ? Number(existing.initial_cash) : Number(initialCashInput !== "" ? initialCashInput : 0);
+      const cashVal = Number(initialCashInput !== "" ? initialCashInput : 0);
+      const noteVal = role === "admin" ? (note || null) : (existing?.note || null);
 
-      if (existing?.id) {
-        const updatePayload: any = {
+      let savedRecord: any = null;
+
+      // 1. If existing record has UUID id, update by id
+      if (existing?.id && !String(existing.id).startsWith("local_")) {
+        const updatePayload = {
           initial_cash: cashVal,
-          note: role === "admin" ? (note || null) : (existing.note || null),
+          note: noteVal,
           branch_name: targetBranch,
+          updated_at: new Date().toISOString(),
         };
-        try {
-          const { error } = await supabase.from("daily_reports").update(updatePayload).eq("id", existing.id);
-          if (error) throw error;
-        } catch {
-          const { branch_name, ...basic } = updatePayload;
-          const { error } = await supabase.from("daily_reports").update(basic).eq("report_date", date);
-          if (error) throw error;
-        }
-      } else {
-        const insertPayload: any = {
-          report_date: date,
-          branch_name: targetBranch,
-          initial_cash: cashVal,
-          note: role === "admin" ? (note || null) : null,
-          created_by: u.user?.id,
-        };
-        try {
-          const { error } = await supabase.from("daily_reports").insert(insertPayload);
-          if (error) throw error;
-        } catch {
-          const { branch_name, ...basic } = insertPayload;
-          const { error } = await supabase.from("daily_reports").upsert(basic);
-          if (error) throw error;
+
+        const { data: upRes, error: upErr } = await supabase
+          .from("daily_reports")
+          .update(updatePayload)
+          .eq("id", existing.id)
+          .select();
+
+        if (!upErr && upRes && upRes.length > 0) {
+          savedRecord = upRes[0];
         }
       }
 
-      // Local storage sync
+      // 2. If not saved yet, try upsert by report_date & branch_name
+      if (!savedRecord) {
+        const payload = {
+          report_date: date,
+          branch_name: targetBranch,
+          initial_cash: cashVal,
+          note: noteVal,
+          created_by: u.user?.id || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: upsertRes, error: upsertErr } = await supabase
+          .from("daily_reports")
+          .upsert(payload, { onConflict: "report_date,branch_name" })
+          .select();
+
+        if (!upsertErr && upsertRes && upsertRes.length > 0) {
+          savedRecord = upsertRes[0];
+        } else {
+          // Fallback: try insert
+          const { data: insRes, error: insErr } = await supabase
+            .from("daily_reports")
+            .insert(payload)
+            .select();
+
+          if (!insErr && insRes && insRes.length > 0) {
+            savedRecord = insRes[0];
+          } else {
+            // Fallback: update by report_date and branch_name
+            const { data: matchRes, error: matchErr } = await supabase
+              .from("daily_reports")
+              .update({
+                initial_cash: cashVal,
+                note: noteVal,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("report_date", date)
+              .eq("branch_name", targetBranch)
+              .select();
+
+            if (!matchErr && matchRes && matchRes.length > 0) {
+              savedRecord = matchRes[0];
+            } else {
+              console.warn("Supabase daily_reports save warning:", matchErr || insErr || upsertErr);
+            }
+          }
+        }
+      }
+
+      // 3. LocalStorage sync (keep all branches for this date)
       try {
         const localKey = `app_daily_reports_${date}`;
         const prev: any[] = JSON.parse(localStorage.getItem(localKey) || "[]");
         const filtered = prev.filter((p: any) => {
-          if (u.user?.id && p.created_by === u.user.id) return false;
           const pb = getReportBranch(p);
-          if (targetBranch && pb && branchMatch(pb, targetBranch)) return false;
+          if (pb && branchMatch(pb, targetBranch)) return false;
+          if (savedRecord?.id && p.id === savedRecord.id) return false;
+          if (existing?.id && p.id === existing.id) return false;
           return true;
         });
+
         filtered.push({
+          id: savedRecord?.id || existing?.id || `local_${targetBranch}_${Date.now()}`,
           report_date: date,
           branch_name: targetBranch,
           initial_cash: cashVal,
-          note: role === "admin" ? (note || null) : null,
-          created_by: u.user?.id,
+          note: noteVal,
+          created_by: u.user?.id || null,
+          updated_at: new Date().toISOString(),
         });
         localStorage.setItem(localKey, JSON.stringify(filtered));
-      } catch {}
+      } catch (err) {
+        console.warn("LocalStorage save error:", err);
+      }
     },
     onSuccess: () => {
-      toast.success("Kas awal & laporan berhasil disimpan");
+      const target = role === "cashier" ? cashierBranch : activeAdminInputBranch;
+      toast.success(`Kas awal & laporan (${target}) berhasil disimpan`);
       qc.invalidateQueries({ queryKey: ["daily_reports", date] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -657,10 +745,16 @@ function ReportsPage() {
               Menampilkan cabang: <span className="font-semibold">{selectedBranch}</span>
             </p>
           )}
+          {role === "admin" && selectedBranch === "all" && (
+            <p className="text-xs text-muted-foreground font-medium mt-0.5 flex items-center gap-1">
+              <Store className="h-3.5 w-3.5 text-primary" />
+              Menampilkan gabungan: <span className="font-semibold text-foreground">Semua Cabang</span>
+            </p>
+          )}
           {role === "cashier" && (
             <p className="text-xs text-muted-foreground font-medium mt-0.5 flex items-center gap-1">
               <Store className="h-3.5 w-3.5 text-primary" />
-              Cabang: <span className="font-semibold text-foreground">{branchName || "Cabang Utama"}</span>
+              Cabang: <span className="font-semibold text-foreground">{cashierBranch}</span>
             </p>
           )}
         </div>
@@ -693,7 +787,7 @@ function ReportsPage() {
             <Input
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => handleDateChange(e.target.value)}
               className="w-[150px] h-9"
             />
           </div>
@@ -796,7 +890,7 @@ function ReportsPage() {
 
       {tab === "harian" && role === "cashier" && (
         <>
-          {/* Hanya 2 Kartu: Total Cash dan Total QRIS */}
+          {/* Ringkasan Kasir */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <StatCard
               icon={Wallet}
@@ -819,7 +913,7 @@ function ReportsPage() {
             <CardHeader>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-primary" /> Input Kas Awal ({branchName || "Cabang Kasir"})
+                  <Wallet className="h-4 w-4 text-primary" /> Input Kas Awal ({cashierBranch})
                 </CardTitle>
                 {isInitialCashLocked && (
                   <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs">
@@ -841,11 +935,7 @@ function ReportsPage() {
                   <Input
                     type="number"
                     min="0"
-                    value={
-                      currentFormReport?.initial_cash != null && initialCashInput === ""
-                        ? currentFormReport.initial_cash
-                        : initialCashInput
-                    }
+                    value={initialCashInput}
                     onChange={(e) => setInitialCashInput(e.target.value)}
                     placeholder="0"
                     disabled={isInitialCashLocked || save.isPending}
@@ -872,7 +962,13 @@ function ReportsPage() {
         <>
           {/* 4 Stat Cards Utama Admin */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard icon={Wallet} label="Kas Awal" value={rupiah(initialCash)} tone="muted" />
+            <StatCard
+              icon={Wallet}
+              label="Kas Awal"
+              value={rupiah(initialCash)}
+              sub={selectedBranch === "all" && branchInitialCashBreakdown ? branchInitialCashBreakdown : undefined}
+              tone="muted"
+            />
             <StatCard
               icon={TrendingUp}
               label="Pemasukan"
@@ -903,9 +999,9 @@ function ReportsPage() {
                 <CardTitle className="text-base flex items-center gap-2">
                   <Wallet className="h-4 w-4 text-primary" /> Input Kas Awal & Catatan Cabang
                 </CardTitle>
-                {isInitialCashLocked && (
-                  <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs">
-                    <Lock className="h-3 w-3" /> Kas Awal Cabang Ini Terkunci
+                {currentFormReport?.initial_cash != null && (
+                  <Badge variant="outline" className="gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-xs">
+                    <CheckCircle2 className="h-3 w-3" /> Kas Awal {activeAdminInputBranch} Tersimpan: {rupiah(currentFormReport.initial_cash)}
                   </Badge>
                 )}
               </div>
@@ -937,25 +1033,15 @@ function ReportsPage() {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Kas Awal (Rp)</Label>
+                    <Label>Kas Awal {activeAdminInputBranch} (Rp)</Label>
                     <Input
                       type="number"
                       min="0"
-                      value={
-                        currentFormReport?.initial_cash != null && initialCashInput === ""
-                          ? currentFormReport.initial_cash
-                          : initialCashInput
-                      }
+                      value={initialCashInput}
                       onChange={(e) => setInitialCashInput(e.target.value)}
                       placeholder="0"
-                      disabled={isInitialCashLocked || save.isPending}
+                      disabled={save.isPending}
                     />
-                    {isInitialCashLocked && (
-                      <p className="text-[11px] text-muted-foreground flex items-center gap-1 pt-0.5">
-                        <Lock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                        Kas awal sudah disimpan dan terkunci.
-                      </p>
-                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Catatan (opsional)</Label>
@@ -968,7 +1054,10 @@ function ReportsPage() {
                   </div>
                 </div>
                 <Button type="submit" disabled={save.isPending}>
-                  <Save className="h-4 w-4 mr-1" /> {isInitialCashLocked ? "Simpan Catatan" : "Simpan Kas Awal & Catatan"}
+                  <Save className="h-4 w-4 mr-1" />
+                  {currentFormReport?.initial_cash != null
+                    ? `Perbarui Kas Awal (${activeAdminInputBranch})`
+                    : `Simpan Kas Awal (${activeAdminInputBranch})`}
                 </Button>
               </form>
             </CardContent>

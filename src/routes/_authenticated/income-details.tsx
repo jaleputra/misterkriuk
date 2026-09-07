@@ -1,17 +1,18 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, inferBranchFromEmail } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { rupiah } from "@/lib/format";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search, Store } from "lucide-react";
+import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search, Store, User } from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
@@ -64,6 +65,12 @@ function IncomeDetails() {
     return "all";
   });
 
+  useEffect(() => {
+    if (searchParams.branch !== undefined) {
+      setSelectedBranch(searchParams.branch);
+    }
+  }, [searchParams.branch]);
+
   const handleBranchChange = (val: string) => {
     setSelectedBranch(val);
     if (typeof window !== "undefined") {
@@ -102,6 +109,45 @@ function IncomeDetails() {
     },
   });
 
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles_for_transactions"],
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("id, email, name");
+      return data ?? [];
+    },
+  });
+
+  const profilesMap = useMemo(() => {
+    const map: Record<string, { email?: string | null; name?: string | null }> = {};
+    profiles.forEach((p: any) => {
+      if (p.id) map[p.id] = p;
+    });
+    return map;
+  }, [profiles]);
+
+  const userRolesMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    userRoles.forEach((ur: any) => {
+      if (ur.user_id) map[ur.user_id] = ur;
+    });
+    return map;
+  }, [userRoles]);
+
+  const getCashierAccountDisplay = (cashierId?: string | null) => {
+    if (!cashierId) return "admin";
+    const prof = profilesMap[cashierId];
+    const roleObj = userRolesMap[cashierId];
+    const email = prof?.email?.trim().toLowerCase();
+
+    if (email) {
+      if (email === "jaleputra69@gmail.com") return "admin";
+      return email;
+    }
+    if (roleObj?.role === "admin") return "admin";
+    if (roleObj?.role === "cashier") return "kasir@gmail.com";
+    return "admin";
+  };
+
   const cashierBranchMap = useMemo(() => {
     const map: Record<string, string> = {};
     userRoles.forEach((ur: any) => {
@@ -114,12 +160,30 @@ function IncomeDetails() {
 
   const branchMatch = (b1?: string | null, b2?: string | null) => {
     if (!b1 || !b2) return false;
-    return b1.trim().toLowerCase() === b2.trim().toLowerCase();
+    const s1 = b1.trim().toLowerCase().replace(/\s+/g, "");
+    const s2 = b2.trim().toLowerCase().replace(/\s+/g, "");
+    return s1 === s2;
   };
 
-  const getTxBranch = (t: any) => {
-    if (t.branch_name?.trim()) return t.branch_name.trim();
-    if (t.cashier_id && cashierBranchMap[t.cashier_id]) return cashierBranchMap[t.cashier_id];
+  const getTxBranch = (t: any): string | null => {
+    // 1. If cashier has assigned branch in user_roles, that takes priority
+    if (t.cashier_id && cashierBranchMap[t.cashier_id]) {
+      return cashierBranchMap[t.cashier_id];
+    }
+    // 2. If cashier has profile email, infer branch (e.g. kasir2@gmail.com -> Cabang 2)
+    if (t.cashier_id && profilesMap[t.cashier_id]?.email) {
+      const inferred = inferBranchFromEmail(profilesMap[t.cashier_id]?.email);
+      if (inferred) return inferred;
+    }
+    // 3. From transaction's explicit branch_name
+    if (t.branch_name?.trim()) {
+      return t.branch_name.trim();
+    }
+    // 4. From local cache
+    if (typeof window !== "undefined" && t.cashier_id) {
+      const cached = localStorage.getItem(`app_user_branch_${t.cashier_id}`);
+      if (cached?.trim()) return cached.trim();
+    }
     return null;
   };
 
@@ -199,8 +263,10 @@ function IncomeDetails() {
       const b = getTxBranch(t);
       if (b?.trim()) set.add(b.trim());
     });
+    set.add("Cabang 1");
+    set.add("Cabang 2");
     return Array.from(set);
-  }, [branches, userRoles, allTxs, cashierBranchMap]);
+  }, [branches, userRoles, allTxs, cashierBranchMap, profilesMap]);
 
   const saleCategoryFilter = searchParams.saleCategory;
 
@@ -217,7 +283,10 @@ function IncomeDetails() {
         return false;
       });
     } else if (role === "admin" && selectedBranch !== "all") {
-      filtered = filtered.filter((t: any) => branchMatch(getTxBranch(t), selectedBranch));
+      filtered = filtered.filter((t: any) => {
+        const b = getTxBranch(t);
+        return branchMatch(b, selectedBranch);
+      });
     }
 
     if (saleCategoryFilter === "partner") {
@@ -249,7 +318,19 @@ function IncomeDetails() {
         .toLocaleLowerCase("id-ID");
       return hay.includes(term);
     });
-  }, [allTxs, items, search, paymentMethodFilter, saleCategoryFilter]);
+  }, [
+    allTxs,
+    items,
+    search,
+    paymentMethodFilter,
+    saleCategoryFilter,
+    role,
+    selectedBranch,
+    cashierBranchMap,
+    branchName,
+    user?.id,
+    profilesMap,
+  ]);
 
   const totalRevenue = useMemo(() => txs.reduce((s, t) => s + Number(t.total), 0), [txs]);
 
@@ -578,12 +659,23 @@ function IncomeDetails() {
                   className="flex justify-between items-center py-3 px-2 text-sm cursor-pointer hover:bg-muted/50 rounded transition active:scale-[0.99]"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold truncate">
-                      No: {t.id.slice(0, 8).toUpperCase()}
+                    <div className="font-semibold truncate flex items-center gap-1.5 flex-wrap">
+                      <span>No: {t.id.slice(0, 8).toUpperCase()}</span>
                       {t.partner_name ? ` · Partner: ${t.partner_name}` : t.buyer_name ? ` · ${t.buyer_name}` : ""}
+                      {getTxBranch(t) && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal bg-primary/10 text-primary border-primary/20">
+                          <Store className="h-2.5 w-2.5 mr-0.5" />
+                          {getTxBranch(t)}
+                        </Badge>
+                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(t.created_at).toLocaleString("id-ID")}
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap mt-0.5">
+                      <span>{new Date(t.created_at).toLocaleString("id-ID")}</span>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/80 text-[11px] font-medium text-foreground/85">
+                        <User className="h-3 w-3 text-muted-foreground" />
+                        Akun: <strong className="text-primary font-semibold">{getCashierAccountDisplay(t.cashier_id)}</strong>
+                      </span>
                     </div>
                   </div>
                   <div className="text-right shrink-0 pl-2">
@@ -660,7 +752,13 @@ function IncomeDetails() {
                 </div>
 
                 <div className="space-y-3 border rounded-lg p-3 bg-card">
-                  <h3 className="font-semibold text-sm">Data Transaksi</h3>
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <h3 className="font-semibold text-sm">Data Transaksi</h3>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-[11px] font-medium text-foreground/85 border">
+                      <User className="h-3 w-3 text-muted-foreground" />
+                      Akun: <strong className="text-primary">{getCashierAccountDisplay(selectedTx.cashier_id)}</strong>
+                    </span>
+                  </div>
 
                   <div className="space-y-1.5">
                     <Label>Metode Pembayaran</Label>
