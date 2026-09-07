@@ -167,7 +167,7 @@ function CashierAttendancePage() {
   }, [branchName, user?.id, user?.email, availableBranchNames]);
 
   const [selectedBranchOverride, setSelectedBranchOverride] = useState<string>("");
-  const selectedBranch = selectedBranchOverride || assignedBranch;
+  const selectedBranch = role === "admin" && selectedBranchOverride ? selectedBranchOverride : assignedBranch;
 
   // GPS State
   const [coords, setCoords] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
@@ -403,15 +403,12 @@ function CashierAttendancePage() {
                   </div>
                   <div>
                     <span className="text-[11px] text-muted-foreground block">Cabang Toko Absensi:</span>
-                    {availableBranchNames.length > 1 ? (
+                    {role === "admin" ? (
                       <div className="flex items-center gap-2 mt-0.5">
                         <Select
                           value={selectedBranch}
                           onValueChange={(val) => {
                             setSelectedBranchOverride(val);
-                            if (user?.id && typeof window !== "undefined") {
-                              localStorage.setItem(`app_user_branch_${user.id}`, val);
-                            }
                           }}
                         >
                           <SelectTrigger className="h-7 text-xs font-bold w-[160px] bg-background">
@@ -427,12 +424,14 @@ function CashierAttendancePage() {
                         </Select>
                       </div>
                     ) : (
-                      <span className="font-bold text-sm text-foreground">{selectedBranch}</span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="font-bold text-sm text-foreground">{assignedBranch}</span>
+                      </div>
                     )}
                   </div>
                 </div>
-                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-[11px] font-medium">
-                  {selectedBranchOverride ? "Cabang Dipilih" : "Tersinkronisasi Akun"}
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[11px] font-semibold">
+                  {role === "admin" && selectedBranchOverride ? "Admin Preview" : "Otomatis Sesuai Akun"}
                 </Badge>
               </div>
 

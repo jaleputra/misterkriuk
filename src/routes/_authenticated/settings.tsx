@@ -85,7 +85,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 
 function SettingsPage() {
   const navigate = useNavigate();
-  const { role, loading, user } = useAuth();
+  const { role, loading, user, branchName } = useAuth();
   const qc = useQueryClient();
 
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
@@ -579,6 +579,7 @@ function SettingsPage() {
 
   // Cabang penugasan kasir sesuai akun yang disetting
   const cashierAssignedBranch = useMemo(() => {
+    if (branchName?.trim()) return branchName.trim();
     if (user?.id && typeof window !== "undefined") {
       const stored = localStorage.getItem(`app_user_branch_${user.id}`);
       if (stored?.trim()) return stored.trim();
@@ -586,7 +587,7 @@ function SettingsPage() {
     const inferred = inferBranchFromEmail(user?.email);
     if (inferred) return inferred;
     return "Cabang 1";
-  }, [user?.id, user?.email]);
+  }, [branchName, user?.id, user?.email]);
 
   const cashierBranchConfig = useMemo(() => {
     return getBranchLocation(cashierAssignedBranch);

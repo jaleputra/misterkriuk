@@ -24,8 +24,9 @@ export function inferRoleFromEmail(email?: string | null): AppRole {
 export function inferBranchFromEmail(email?: string | null): string | null {
   if (!email) return null;
   const normalized = email.trim().toLowerCase();
-  if (normalized === "kasir@gmail.com" || normalized === "kasir1@gmail.com") return "Cabang 1";
-  if (normalized === "kasir2@gmail.com") return "Cabang 2";
+  if (normalized.includes("kasir2") || normalized.includes("cabang2") || normalized.includes("cabang-2") || normalized.includes("cabang 2")) return "Cabang 2";
+  if (normalized === "kasir@gmail.com" || normalized.includes("kasir1") || normalized.includes("cabang1") || normalized.includes("cabang-1") || normalized.includes("cabang 1")) return "Cabang 1";
+  if (normalized.includes("kasir")) return "Cabang 1";
   return null;
 }
 
