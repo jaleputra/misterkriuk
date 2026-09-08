@@ -1,4 +1,4 @@
-import { rupiah } from "@/lib/format";
+import { rupiah, cleanReceiptAddress } from "@/lib/format";
 
 interface ReceiptProps {
   tx: {
@@ -24,12 +24,14 @@ interface ReceiptProps {
 }
 
 export function Receipt({ tx, settings }: ReceiptProps) {
+  const cleanAddress = cleanReceiptAddress(settings?.shop_address);
+
   return (
     <div id="receipt-print" className="text-xs bg-white text-black pt-4 px-4 pb-1 rounded-md border max-w-[300px] w-full mx-auto box-border shadow-sm my-2">
       <div className="center text-center">
         <div className="font-bold text-sm">{settings?.shop_name ?? "Mr Kriuk Ami"}</div>
         {settings?.branch_name && <div className="text-[11px] font-medium text-neutral-600">{settings.branch_name}</div>}
-        {settings?.shop_address && <div className="break-words">{settings.shop_address}</div>}
+        {cleanAddress && <div className="break-words">{cleanAddress}</div>}
         {settings?.shop_phone && <div>{settings.shop_phone}</div>}
       </div>
       <hr className="border-t border-dashed border-black my-2" />

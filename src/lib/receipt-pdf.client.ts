@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import { rupiah } from "@/lib/format";
+import { rupiah, cleanReceiptAddress } from "@/lib/format";
 import type { ReceiptPdfSettings, ReceiptPdfTransaction } from "@/lib/receipt-pdf.types";
 import html2canvas from "html2canvas";
 import { toast } from "sonner";
@@ -12,8 +12,9 @@ const LEFT_MM = 4;
 
 function receiptHeight(tx: ReceiptPdfTransaction, settings: ReceiptPdfSettings) {
   const branchLines = settings?.branch_name ? 1 : 0;
-  const addressLines = settings?.shop_address
-    ? Math.max(1, Math.ceil(settings.shop_address.length / 40))
+  const cleanAddress = cleanReceiptAddress(settings?.shop_address);
+  const addressLines = cleanAddress
+    ? Math.max(1, Math.ceil(cleanAddress.length / 40))
     : 0;
   const phoneLines = settings?.shop_phone ? 1 : 0;
   const partnerLines = tx.partner_name ? 1 : 0;
@@ -83,7 +84,8 @@ export function createReceiptPdf(tx: ReceiptPdfTransaction, settings: ReceiptPdf
 
   centerText(settings?.shop_name ?? "Mr Kriuk Ami", 10, true);
   if (settings?.branch_name) centerText(settings.branch_name, 8, false);
-  if (settings?.shop_address) centerText(settings.shop_address);
+  const cleanAddress = cleanReceiptAddress(settings?.shop_address);
+  if (cleanAddress) centerText(cleanAddress);
   if (settings?.shop_phone) centerText(settings.shop_phone);
   divider();
   row("No.", tx.id.slice(0, 8).toUpperCase());

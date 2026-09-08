@@ -4,7 +4,7 @@
 // 00002af1-0000-1000-8000-00805f9b34fb. Falls back by scanning writable
 // characteristics on the primary service if the well-known UUID is missing.
 
-import { rupiah } from "@/lib/format";
+import { rupiah, cleanReceiptAddress } from "@/lib/format";
 
 const SERVICE_UUID = "000018f0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID = "00002af1-0000-1000-8000-00805f9b34fb";
@@ -307,8 +307,9 @@ function buildReceipt(tx: ReceiptTx, settings: ReceiptSettings): Uint8Array {
   parts.push(cmd.boldOn, cmd.doubleOn);
   parts.push(enc.encode((settings?.shop_name ?? "Mr Kriuk Ami") + "\n"));
   parts.push(cmd.doubleOff, cmd.boldOff);
-  if (settings?.shop_address)
-    for (const l of wrap(settings.shop_address, width)) parts.push(enc.encode(l + "\n"));
+  const cleanAddress = cleanReceiptAddress(settings?.shop_address);
+  if (cleanAddress)
+    for (const l of wrap(cleanAddress, width)) parts.push(enc.encode(l + "\n"));
   if (settings?.shop_phone) parts.push(enc.encode(settings.shop_phone + "\n"));
   parts.push(cmd.alignLeft);
   parts.push(enc.encode("-".repeat(width) + "\n"));

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AttendanceLocationPickerMap } from "@/components/AttendanceLocationPickerMap";
+import { cleanReceiptAddress } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,10 +149,11 @@ function SettingsPage() {
       toast.error("Hanya admin yang dapat mengedit data cabang");
       return;
     }
+    const cleanAddr = cleanReceiptAddress(b.shop_address) || b.shop_address || "";
     setBranchForm({
       shop_name: b.shop_name || "AMI Fried Chicken",
       branch_name: b.branch_name || "",
-      shop_address: b.shop_address || "",
+      shop_address: cleanAddr.startsWith("{") ? "" : cleanAddr,
       shop_phone: b.shop_phone || "",
       whatsapp_number: b.whatsapp_number || "",
     });
@@ -398,7 +400,7 @@ function SettingsPage() {
       const activeBranch = branches[0];
       await testPrintClient({
         shop_name: activeBranch?.shop_name || "AMI Fried Chicken",
-        shop_address: activeBranch?.shop_address || "",
+        shop_address: cleanReceiptAddress(activeBranch?.shop_address),
         shop_phone: activeBranch?.shop_phone || "",
         paper_width: form.paper_width,
       });
@@ -431,7 +433,7 @@ function SettingsPage() {
       printReceiptPdfClient(sampleTx as any, {
         shop_name: activeBranch?.shop_name || "AMI Fried Chicken",
         branch_name: activeBranch?.branch_name || "Cabang Utama",
-        shop_address: activeBranch?.shop_address || "",
+        shop_address: cleanReceiptAddress(activeBranch?.shop_address),
         shop_phone: activeBranch?.shop_phone || "",
         paper_width: form.paper_width,
       });
@@ -1763,7 +1765,7 @@ function SettingsPage() {
                           {b.whatsapp_number || <span className="text-muted-foreground">-</span>}
                         </TableCell>
                         <TableCell className="max-w-xs break-words">
-                          {b.shop_address || <span className="text-muted-foreground">-</span>}
+                          {cleanReceiptAddress(b.shop_address) || <span className="text-muted-foreground">-</span>}
                         </TableCell>
                         {role === "admin" && (
                           <TableCell className="text-right">
