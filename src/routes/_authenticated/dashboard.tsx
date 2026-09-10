@@ -244,6 +244,11 @@ function Dashboard() {
         }
       }
 
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const sinceDateStr = fmt(fetchSince);
+      const untilDateStr = until ? fmt(until) : null;
+
       const txs = await fetchAllRows<any>((from, to) => {
         let q = supabase
           .from("transactions")
@@ -978,34 +983,6 @@ function Dashboard() {
           {customRange && (
             <span className="text-[10px] text-primary">(Rentang kustom aktif — filter waktu di atas diabaikan)</span>
           )}
-        </div>
-
-        {/* 4 Stat Cards for Cashier */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat
-            icon={DollarSign}
-            label="Total Pemasukan"
-            value={rupiah(overallRevenue)}
-            sub={`${txs.length} Transaksi`}
-          />
-          <Stat
-            icon={Banknote}
-            label="Total Cash"
-            value={rupiah(overallCashRevenue)}
-            sub={`${txs.filter((t) => t.payment_method === "cash").length} Transaksi Cash`}
-          />
-          <Stat
-            icon={CreditCard}
-            label="Total QRIS"
-            value={rupiah(overallQrisRevenue)}
-            sub={`${txs.filter((t) => t.payment_method === "qris").length} Transaksi QRIS`}
-          />
-          <Stat
-            icon={ShoppingBag}
-            label="Total Transaksi"
-            value={`${txs.length} Tx`}
-            sub={`${totalProductsSold} Pcs Terjual`}
-          />
         </div>
 
         {/* Search Bar */}
