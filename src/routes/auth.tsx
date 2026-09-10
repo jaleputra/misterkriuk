@@ -8,33 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from "lucide-react";
-import { hasCashierCheckedInToday, syncTodayAttendanceFromCloud } from "@/lib/attendance";
-
-function isCashierUser(user?: { id?: string; email?: string } | null): boolean {
-  if (!user?.email) return false;
-  const email = user.email.toLowerCase().trim();
-  const isExplicitKasir = email === "kasir@gmail.com" || email.includes("kasir");
-
-  let role: string | null = isExplicitKasir ? "cashier" : (email === "jaleputra69@gmail.com" ? "admin" : null);
-  if (!role && user.id && typeof window !== "undefined") {
-    const stored = localStorage.getItem(`app_user_role_${user.id}`);
-    if (stored === "admin" || stored === "cashier") role = stored;
-  }
-  return role !== "admin";
-}
-
-async function resolvePostLoginDestination(user?: { id?: string; email?: string } | null): Promise<string> {
-  if (!user?.email) return "/transaction";
-  const isKasir = isCashierUser(user);
-  if (isKasir) {
-    if (user.id) {
-      try {
-        await syncTodayAttendanceFromCloud(user.id, user.email);
-      } catch {}
-    }
-    const checkedIn = hasCashierCheckedInToday(user.id, user.email);
-    if (!checkedIn) return "/attendance";
-  }
+function resolvePostLoginDestination(): string {
   return "/transaction";
 }
 
@@ -43,8 +17,7 @@ export const Route = createFileRoute("/auth")({
   beforeLoad: async () => {
     const { data } = await supabase.auth.getSession();
     if (data.session?.user) {
-      const dest = await resolvePostLoginDestination(data.session.user);
-      throw redirect({ to: dest });
+      throw redirect({ to: resolvePostLoginDestination() });
     }
   },
   component: AuthPage,
@@ -61,8 +34,7 @@ function AuthPage() {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
       if (s?.user) {
-        const dest = await resolvePostLoginDestination(s.user);
-        navigate({ to: dest, replace: true });
+        navigate({ to: resolvePostLoginDestination(), replace: true });
       }
     });
     return () => sub.subscription.unsubscribe();
@@ -87,13 +59,8 @@ function AuthPage() {
         return;
       }
       if (data?.session) {
-        const dest = await resolvePostLoginDestination(data.session.user);
-        if (dest === "/attendance") {
-          toast.success("Login berhasil! Silakan lakukan absen terlebih dahulu.");
-        } else {
-          toast.success("Login berhasil! Membuka kasir...");
-        }
-        navigate({ to: dest, replace: true });
+        toast.success("Login berhasil! Membuka kasir...");
+        navigate({ to: resolvePostLoginDestination(), replace: true });
       }
     } catch (err: any) {
       toast.error(err?.message || "Gagal melakukan login");
@@ -132,7 +99,7 @@ function AuthPage() {
           password,
         });
         if (signInData?.session) {
-          const dest = await resolvePostLoginDestination(signInData.session.user);
+          const dest = resolvePostLoginDestination();
           toast.success("Pendaftaran & Login berhasil! Membuka aplikasi...");
           navigate({ to: dest, replace: true });
         } else {

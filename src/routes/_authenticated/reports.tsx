@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,12 +28,8 @@ import {
   CreditCard,
   Users,
   Store,
-  Lock,
-  Plus,
-  Clock,
-  Calendar,
-  RotateCcw,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -58,11 +54,13 @@ export const Route = createFileRoute("/_authenticated/reports")({
 
 function ReportsPage() {
   const { role: rawRole, branchName, loading, user } = useAuth();
-  const navigate = useNavigate({ from: Route.fullPath });
+  const navigate = useNavigate();
   const searchParams = Route.useSearch();
   const qc = useQueryClient();
 
-  const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
+  const isExplicitKasir =
+    user?.email?.toLowerCase().trim() === "kasir@gmail.com" ||
+    user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
     ? "cashier"
     : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
@@ -92,50 +90,6 @@ function ReportsPage() {
     });
   };
 
-  const handleEndDateChange = (val: string) => {
-    setEndDate(val);
-    navigate({
-      search: (prev: any) => ({
-        ...prev,
-        endDate: val || undefined,
-      }),
-    });
-  };
-
-  const handleStartTimeChange = (val: string) => {
-    setStartTime(val);
-    navigate({
-      search: (prev: any) => ({
-        ...prev,
-        startTime: val || undefined,
-      }),
-    });
-  };
-
-  const handleEndTimeChange = (val: string) => {
-    setEndTime(val);
-    navigate({
-      search: (prev: any) => ({
-        ...prev,
-        endTime: val || undefined,
-      }),
-    });
-  };
-
-  const handleResetTimeAndDateFilter = () => {
-    setEndDate("");
-    setStartTime("");
-    setEndTime("");
-    navigate({
-      search: (prev: any) => ({
-        ...prev,
-        endDate: undefined,
-        startTime: undefined,
-        endTime: undefined,
-      }),
-    });
-  };
-
   const getEntryTime24h = (isoString?: string | null) => {
     if (!isoString) return "";
     const d = new Date(isoString);
@@ -160,38 +114,23 @@ function ReportsPage() {
     return true;
   };
 
-  // Pilihan cabang untuk Admin (Kasir otomatis terkunci ke cabangnya)
-  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
-    if (searchParams.branch) return searchParams.branch;
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("app_admin_selected_branch") || "all";
-    }
-    return "all";
-  });
-
-  useEffect(() => {
-    if (!loading && role && role !== "admin" && role !== "cashier") {
-      toast.error("Akses ditolak");
-      navigate({ to: "/dashboard" });
-    }
-  }, [role, loading, navigate]);
-
-  if (loading) {
-    return <div className="p-8 text-center text-muted-foreground text-sm">Memuat laporan...</div>;
-  }
-
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        const { data, error } = await supabase
+          .from("branches")
+          .select("*")
+          .order("created_at", { ascending: true });
         if (error) {
-          const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+          const localData =
+            typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
           return localData ? JSON.parse(localData) : [];
         }
         return data ?? [];
       } catch {
-        const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
+        const localData =
+          typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
         return localData ? JSON.parse(localData) : [];
       }
     },
@@ -220,9 +159,33 @@ function ReportsPage() {
     return map;
   }, [userRoles]);
 
-  const cashierBranch = useMemo(() => {
-    return branchName || (user?.id ? cashierBranchMap[user.id] : null) || inferBranchFromEmail(user?.email) || "Cabang 1";
+  const cashierAssignedBranch = useMemo(() => {
+    return (
+      branchName ||
+      (user?.id ? cashierBranchMap[user.id] : null) ||
+      inferBranchFromEmail(user?.email) ||
+      "Cabang 1"
+    );
   }, [branchName, user?.id, user?.email, cashierBranchMap]);
+
+  // Pilihan cabang (Admin bisa pilih, Kasir strictly terkunci ke cabangnya)
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+    if (role === "cashier") return cashierAssignedBranch;
+    if (searchParams.branch) return searchParams.branch;
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("app_admin_selected_branch") || "all";
+    }
+    return "all";
+  });
+
+  const effectiveSelectedBranch = role === "cashier" ? cashierAssignedBranch : selectedBranch;
+
+  useEffect(() => {
+    if (!loading && role && role !== "admin" && role !== "cashier") {
+      toast.error("Akses ditolak");
+      navigate({ to: "/dashboard" });
+    }
+  }, [role, loading, navigate]);
 
   const [dayStart, dayEnd] = useMemo(() => {
     const [year, month, day] = date.split("-").map(Number);
@@ -253,7 +216,6 @@ function ReportsPage() {
         }
 
         const dbList = data ?? [];
-        // Merge dbList and localList so no branch data is lost
         const mergedMap = new Map<string, any>();
         localList.forEach((item: any) => {
           const b = item.branch_name?.trim() || "Cabang 1";
@@ -276,7 +238,6 @@ function ReportsPage() {
         return localList;
       }
     },
-    enabled: role === "admin" || role === "cashier",
   });
 
   const { data: txs = [] } = useQuery({
@@ -301,7 +262,6 @@ function ReportsPage() {
         return data ?? [];
       }
     },
-    enabled: role === "admin" || role === "cashier",
   });
 
   const isDateRange = !!(endDate && endDate !== date);
@@ -338,7 +298,6 @@ function ReportsPage() {
         return data ?? [];
       }
     },
-    enabled: role === "admin" || role === "cashier",
   });
 
   const branchOptions = useMemo(() => {
@@ -381,15 +340,16 @@ function ReportsPage() {
     return null;
   };
 
-  // State untuk memilih cabang yang akan diinputkan kas awal oleh Admin
-  const [adminInputBranch, setAdminInputBranch] = useState<string>("");
-  const activeAdminInputBranch = adminInputBranch || (selectedBranch !== "all" ? selectedBranch : (branchOptions[0] || "Cabang 1"));
+  // Cabang aktif untuk form/data kas awal: mengikuti filter cabang paling atas (atau cabang kasir)
+  const activeFormBranch =
+    role === "cashier"
+      ? cashierAssignedBranch
+      : selectedBranch !== "all"
+      ? selectedBranch
+      : null;
 
   const handleSelectBranchFilter = (val: string) => {
     setSelectedBranch(val);
-    if (val !== "all") {
-      setAdminInputBranch(val);
-    }
     if (typeof window !== "undefined") {
       localStorage.setItem("app_admin_selected_branch", val);
     }
@@ -401,23 +361,14 @@ function ReportsPage() {
     });
   };
 
-  // Laporan yang relevan dengan form input saat ini
+  // Laporan yang relevan dengan cabang form saat ini
   const currentFormReport = useMemo(() => {
-    if (role === "cashier") {
-      return (dailyReports as any[]).find((r) => {
-        const rb = getReportBranch(r);
-        if (rb && branchMatch(rb, cashierBranch)) return true;
-        if (user?.id && r.created_by === user.id && !rb) return true;
-        return false;
-      });
-    }
+    if (!activeFormBranch) return null;
     return (dailyReports as any[]).find((r) => {
       const rb = getReportBranch(r);
-      return rb && branchMatch(rb, activeAdminInputBranch);
+      return rb && branchMatch(rb, activeFormBranch);
     });
-  }, [dailyReports, role, cashierBranch, activeAdminInputBranch, user?.id]);
-
-  const isInitialCashLocked = role === "cashier" && currentFormReport?.initial_cash != null;
+  }, [dailyReports, activeFormBranch]);
 
   useEffect(() => {
     if (currentFormReport?.initial_cash != null) {
@@ -426,34 +377,24 @@ function ReportsPage() {
       setInitialCashInput("");
     }
     setNote(currentFormReport?.note ?? "");
-  }, [currentFormReport, date, activeAdminInputBranch, cashierBranch]);
+  }, [currentFormReport, date, activeFormBranch]);
 
-  // Filter transaksi berdasarkan role dan pilihan cabang
+  // Filter transaksi berdasarkan cabang yang aktif (Kasir hanya melihat cabangnya sendiri)
   const filteredTxs = useMemo(() => {
     if (role === "cashier") {
-      return (txs as any[]).filter((t) => {
-        if (user?.id && t.cashier_id === user.id) return true;
-        const tb = getTxBranch(t);
-        if (cashierBranch && tb) return branchMatch(tb, cashierBranch);
-        return false;
-      });
+      return (txs as any[]).filter((t) => branchMatch(getTxBranch(t), cashierAssignedBranch));
     }
-    if (selectedBranch === "all") return txs as any[];
-    return (txs as any[]).filter((t) => branchMatch(getTxBranch(t), selectedBranch));
-  }, [txs, role, cashierBranch, selectedBranch, cashierBranchMap, user?.id]);
+    if (effectiveSelectedBranch === "all") return txs as any[];
+    return (txs as any[]).filter((t) => branchMatch(getTxBranch(t), effectiveSelectedBranch));
+  }, [txs, role, cashierAssignedBranch, effectiveSelectedBranch, cashierBranchMap]);
 
-  // Filter pengeluaran berdasarkan role, pilihan cabang, dan rentang waktu (jam & menit)
+  // Filter pengeluaran berdasarkan cabang yang aktif (Kasir hanya melihat cabangnya sendiri)
   const filteredEntries = useMemo(() => {
     let list = entries as any[];
     if (role === "cashier") {
-      list = list.filter((e) => {
-        if (user?.id && e.created_by === user.id) return true;
-        const eb = getEntryBranch(e);
-        if (cashierBranch && eb) return branchMatch(eb, cashierBranch);
-        return false;
-      });
-    } else if (role === "admin" && selectedBranch !== "all") {
-      list = list.filter((e) => branchMatch(getEntryBranch(e), selectedBranch));
+      list = list.filter((e) => branchMatch(getEntryBranch(e), cashierAssignedBranch));
+    } else if (effectiveSelectedBranch !== "all") {
+      list = list.filter((e) => branchMatch(getEntryBranch(e), effectiveSelectedBranch));
     }
 
     if (startTime || endTime) {
@@ -461,7 +402,7 @@ function ReportsPage() {
     }
 
     return list;
-  }, [entries, role, cashierBranch, selectedBranch, cashierBranchMap, user?.id, startTime, endTime]);
+  }, [entries, role, cashierAssignedBranch, effectiveSelectedBranch, cashierBranchMap, startTime, endTime]);
 
   // Transaksi partner dipisah dari laporan harian
   const partnerTxs = useMemo(
@@ -496,7 +437,6 @@ function ReportsPage() {
       0,
     );
 
-  // Restok tidak mengurangi laporan harian
   const expenseEntries = useMemo(
     () => filteredEntries.filter((e) => (e.entry_type ?? "expense") !== "restock"),
     [filteredEntries],
@@ -559,30 +499,36 @@ function ReportsPage() {
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [partnerTxs]);
 
-  // Kas Awal sesuai filter yang dipilih
+  // Kas Awal sesuai filter cabang yang dipilih
   const initialCash = useMemo(() => {
     if (role === "cashier") {
       const rep = (dailyReports as any[]).find((r) => {
         const rb = getReportBranch(r);
-        if (rb && branchMatch(rb, cashierBranch)) return true;
-        if (user?.id && r.created_by === user.id && !rb) return true;
-        return false;
+        return rb && branchMatch(rb, cashierAssignedBranch);
       });
       return Number(rep?.initial_cash ?? 0);
     }
-    if (selectedBranch !== "all") {
+    if (effectiveSelectedBranch !== "all") {
       const rep = (dailyReports as any[]).find((r) => {
         const rb = getReportBranch(r);
-        return rb && branchMatch(rb, selectedBranch);
+        return rb && branchMatch(rb, effectiveSelectedBranch);
       });
       return Number(rep?.initial_cash ?? 0);
     }
-    // Semua Cabang: akumulasikan kas awal dari semua cabang
-    return (dailyReports as any[]).reduce((sum: number, r: any) => sum + Number(r.initial_cash ?? 0), 0);
-  }, [dailyReports, role, cashierBranch, selectedBranch, user?.id]);
+    const branchSeen = new Set<string>();
+    let total = 0;
+    (dailyReports as any[]).forEach((r: any) => {
+      const b = getReportBranch(r) || "Cabang 1";
+      if (!branchSeen.has(b.toLowerCase())) {
+        branchSeen.add(b.toLowerCase());
+        total += Number(r.initial_cash ?? 0);
+      }
+    });
+    return total;
+  }, [dailyReports, role, cashierAssignedBranch, effectiveSelectedBranch]);
 
   const branchInitialCashBreakdown = useMemo(() => {
-    if (selectedBranch !== "all") return "";
+    if (effectiveSelectedBranch !== "all") return "";
     return branchOptions
       .map((b) => {
         const rep = (dailyReports as any[]).find((r) => branchMatch(getReportBranch(r), b));
@@ -590,7 +536,7 @@ function ReportsPage() {
         return `${b}: ${rupiah(cash)}`;
       })
       .join(" · ");
-  }, [selectedBranch, branchOptions, dailyReports]);
+  }, [effectiveSelectedBranch, branchOptions, dailyReports]);
 
   const todayResult = initialCash + totalIn - totalOut;
   const totalCashResult = initialCash + cashIn - cashOut;
@@ -598,30 +544,28 @@ function ReportsPage() {
 
   const save = useMutation({
     mutationFn: async () => {
+      if (role !== "admin") {
+        throw new Error("Kas awal hanya dapat diinput oleh Admin!");
+      }
+
       const { data: u } = await supabase.auth.getUser();
-      const targetBranch =
-        role === "cashier"
-          ? cashierBranch
-          : (activeAdminInputBranch || "Cabang 1");
+      const targetBranch = activeFormBranch;
 
       if (!targetBranch) {
-        throw new Error("Pilih cabang untuk menyimpan kas awal!");
+        throw new Error("Pilih cabang spesifik pada filter cabang di atas untuk menyimpan kas awal!");
       }
 
       const existing = (dailyReports as any[]).find((r) => {
         const rb = getReportBranch(r);
-        if (rb && branchMatch(rb, targetBranch)) return true;
-        if (role === "cashier" && u.user?.id && r.created_by === u.user.id && !rb) return true;
-        return false;
+        return rb && branchMatch(rb, targetBranch);
       });
 
-      const isLocked = role === "cashier" && existing?.initial_cash != null;
-      if (isLocked) {
-        throw new Error("Kas awal sudah tersimpan dan tidak dapat diubah lagi.");
+      if (existing?.initial_cash != null && existing?.initial_cash !== undefined) {
+        throw new Error("Kas awal sudah tersimpan dan tidak dapat diubah kembali.");
       }
 
       const cashVal = Number(initialCashInput !== "" ? initialCashInput : 0);
-      const noteVal = role === "admin" ? (note || null) : (existing?.note || null);
+      const noteVal = note || null;
 
       let savedRecord: any = null;
 
@@ -721,67 +665,121 @@ function ReportsPage() {
       }
     },
     onSuccess: () => {
-      const target = role === "cashier" ? cashierBranch : activeAdminInputBranch;
-      toast.success(`Kas awal & laporan (${target}) berhasil disimpan`);
+      toast.success(`Kas awal & laporan (${activeFormBranch}) berhasil disimpan`);
       qc.invalidateQueries({ queryKey: ["daily_reports", date] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (loading || (role !== "admin" && role !== "cashier")) {
-    return <div className="text-sm text-muted-foreground">Memuat…</div>;
+  if (loading) {
+    return <div className="p-8 text-center text-muted-foreground text-sm">Memuat laporan...</div>;
   }
 
+  // ==================== TAMPILAN KHUSUS KASIR ====================
+  // Permintaan User: "tampilkan hanya total cash, total QRIS dan kas awal dihalaman laporan pada akun kasir"
+  // "kas awal pada halaman laporan hanya bisa diinput admin dan tidak bisa diubah oleh admin dan kasir"
+  if (role === "cashier") {
+    return (
+      <div className="space-y-4">
+        {/* Header Kasir */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" /> Laporan Harian
+            </h1>
+            <p className="text-xs text-muted-foreground font-medium mt-0.5 flex items-center gap-1">
+              <Store className="h-3.5 w-3.5 text-primary" />
+              Cabang: <span className="font-semibold text-foreground">{cashierAssignedBranch}</span>
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">Tanggal:</Label>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="w-[150px] h-9"
+            />
+          </div>
+        </div>
+
+        {/* Ringkasan: Kas Awal, Total Cash & Total QRIS */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatCard
+            icon={Wallet}
+            label="Kas Awal"
+            value={rupiah(initialCash)}
+            sub={
+              currentFormReport?.initial_cash != null
+                ? "Kas awal diinput oleh Admin"
+                : "Belum diinput oleh Admin"
+            }
+            tone="muted"
+          />
+          <StatCard
+            icon={Wallet}
+            label="Total Cash"
+            value={rupiah(totalCashResult)}
+            sub="Kas Awal + Cash Masuk − Cash Keluar"
+            tone="primary"
+          />
+          <StatCard
+            icon={CreditCard}
+            label="Total QRIS"
+            value={rupiah(totalQrisResult)}
+            sub="QRIS Masuk − QRIS Keluar"
+            tone="primary"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== TAMPILAN LENGKAP ADMIN ====================
   return (
     <div className="space-y-4">
+      {/* Header & Filter Bar Admin */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <FileText className="h-5 w-5" /> Laporan Harian
+            <FileText className="h-5 w-5 text-primary" /> Laporan Harian
           </h1>
-          {role === "admin" && selectedBranch !== "all" && (
+          {selectedBranch !== "all" ? (
             <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
               <Store className="h-3.5 w-3.5" />
               Menampilkan cabang: <span className="font-semibold">{selectedBranch}</span>
             </p>
-          )}
-          {role === "admin" && selectedBranch === "all" && (
+          ) : (
             <p className="text-xs text-muted-foreground font-medium mt-0.5 flex items-center gap-1">
               <Store className="h-3.5 w-3.5 text-primary" />
               Menampilkan gabungan: <span className="font-semibold text-foreground">Semua Cabang</span>
             </p>
           )}
-          {role === "cashier" && (
-            <p className="text-xs text-muted-foreground font-medium mt-0.5 flex items-center gap-1">
-              <Store className="h-3.5 w-3.5 text-primary" />
-              Cabang: <span className="font-semibold text-foreground">{cashierBranch}</span>
-            </p>
-          )}
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Pilihan Cabang (Khusus Admin) */}
-          {role === "admin" && (
-            <div className="flex items-center gap-1.5">
-              <Label className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</Label>
-              <Select value={selectedBranch} onValueChange={handleSelectBranchFilter}>
-                <SelectTrigger className="w-[170px] h-9">
-                  <SelectValue placeholder="Pilih Cabang" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    <span className="font-medium">Semua Cabang</span>
+          {/* Pilihan Cabang untuk Admin */}
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</Label>
+            <Select value={selectedBranch} onValueChange={handleSelectBranchFilter}>
+              <SelectTrigger className="w-[170px] h-9">
+                <SelectValue placeholder="Pilih Cabang" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  <span className="font-medium">Semua Cabang</span>
+                </SelectItem>
+                {branchOptions.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
                   </SelectItem>
-                  {branchOptions.map((b) => (
-                    <SelectItem key={b} value={b}>
-                      {b}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
+          {/* Tanggal Laporan */}
           <div className="flex items-center gap-1.5">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">Tanggal:</Label>
             <Input
@@ -794,26 +792,26 @@ function ReportsPage() {
         </div>
       </div>
 
-      {role === "admin" && (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant={tab === "harian" ? "default" : "outline"}
-            onClick={() => setTab("harian")}
-          >
-            Harian
-          </Button>
-          <Button
-            size="sm"
-            variant={tab === "partner" ? "default" : "outline"}
-            onClick={() => setTab("partner")}
-          >
-            Partner
-          </Button>
-        </div>
-      )}
+      {/* Tabs */}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant={tab === "harian" ? "default" : "outline"}
+          onClick={() => setTab("harian")}
+        >
+          Harian
+        </Button>
+        <Button
+          size="sm"
+          variant={tab === "partner" ? "default" : "outline"}
+          onClick={() => setTab("partner")}
+        >
+          Partner
+        </Button>
+      </div>
 
-      {tab === "partner" && role === "admin" && (
+      {/* Tab Partner */}
+      {tab === "partner" && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard
@@ -888,79 +886,10 @@ function ReportsPage() {
         </>
       )}
 
-      {tab === "harian" && role === "cashier" && (
+      {/* Tab Harian */}
+      {tab === "harian" && (
         <>
-          {/* Ringkasan Kasir */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <StatCard
-              icon={Wallet}
-              label="Total Cash"
-              value={rupiah(totalCashResult)}
-              sub="Kas Awal + Cash Masuk − Cash Keluar"
-              tone="primary"
-            />
-            <StatCard
-              icon={CreditCard}
-              label="Total QRIS"
-              value={rupiah(totalQrisResult)}
-              sub="QRIS Masuk − QRIS Keluar"
-              tone="primary"
-            />
-          </div>
-
-          {/* Form Input Kas Awal Sesuai Cabang Kasir */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-primary" /> Input Kas Awal ({cashierBranch})
-                </CardTitle>
-                {isInitialCashLocked && (
-                  <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs">
-                    <Lock className="h-3 w-3" /> Kas Awal Terkunci
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="space-y-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  save.mutate();
-                }}
-              >
-                <div className="space-y-1.5 max-w-xs">
-                  <Label>Kas Awal (Rp)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={initialCashInput}
-                    onChange={(e) => setInitialCashInput(e.target.value)}
-                    placeholder="0"
-                    disabled={isInitialCashLocked || save.isPending}
-                  />
-                  {isInitialCashLocked && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
-                      <Lock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                      Kas awal sudah disimpan dan tidak dapat diubah lagi.
-                    </p>
-                  )}
-                </div>
-                {!isInitialCashLocked && (
-                  <Button type="submit" disabled={save.isPending}>
-                    <Save className="h-4 w-4 mr-1" /> Simpan Kas Awal
-                  </Button>
-                )}
-              </form>
-            </CardContent>
-          </Card>
-        </>
-      )}
-
-      {tab === "harian" && role === "admin" && (
-        <>
-          {/* 4 Stat Cards Utama Admin */}
+          {/* 4 Stat Cards Utama */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard
               icon={Wallet}
@@ -992,76 +921,125 @@ function ReportsPage() {
             />
           </div>
 
-          {/* Form Input Kas Awal Admin */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-2">
+          {/* Input & Kelola Kas Awal Admin (Mengikuti Filter Cabang Paling Atas) */}
+          {selectedBranch === "all" ? (
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-primary" /> Input Kas Awal & Catatan Cabang
+                  <Wallet className="h-4 w-4 text-primary" /> Status Kas Awal Cabang
                 </CardTitle>
-                {currentFormReport?.initial_cash != null && (
-                  <Badge variant="outline" className="gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-xs">
-                    <CheckCircle2 className="h-3 w-3" /> Kas Awal {activeAdminInputBranch} Tersimpan: {rupiah(currentFormReport.initial_cash)}
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="space-y-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  save.mutate();
-                }}
-              >
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>
-                      Pilih Cabang <span className="text-destructive">*</span>
-                    </Label>
-                    <Select value={activeAdminInputBranch} onValueChange={setAdminInputBranch}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="-- Pilih Cabang --" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {branchOptions.map((b) => (
-                          <SelectItem key={b} value={b}>
-                            {b}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Kas Awal {activeAdminInputBranch} (Rp)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={initialCashInput}
-                      onChange={(e) => setInitialCashInput(e.target.value)}
-                      placeholder="0"
-                      disabled={save.isPending}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Catatan (opsional)</Label>
-                    <Input
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="Catatan hari ini"
-                      disabled={save.isPending}
-                    />
-                  </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Menampilkan status kas awal seluruh cabang. Untuk menginput atau mengelola kas awal cabang, silakan pilih cabang spesifik pada filter di bagian atas halaman.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {branchOptions.map((b) => {
+                    const rep = (dailyReports as any[]).find((r) => branchMatch(getReportBranch(r), b));
+                    const isSet = rep?.initial_cash != null;
+                    return (
+                      <div
+                        key={b}
+                        className="p-3.5 rounded-xl border border-border bg-muted/20 flex flex-col justify-between gap-2 transition-colors hover:bg-muted/30"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-foreground">{b}</span>
+                          {isSet ? (
+                            <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]">
+                              <Lock className="h-2.5 w-2.5" /> Terkunci
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
+                              Belum Diinput
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm font-bold">
+                          {isSet ? rupiah(Number(rep.initial_cash)) : "Rp 0"}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs justify-start px-0 text-primary hover:underline hover:bg-transparent"
+                          onClick={() => handleSelectBranchFilter(b)}
+                        >
+                          Pilih {b} di filter atas &rarr;
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
-                <Button type="submit" disabled={save.isPending}>
-                  <Save className="h-4 w-4 mr-1" />
-                  {currentFormReport?.initial_cash != null
-                    ? `Perbarui Kas Awal (${activeAdminInputBranch})`
-                    : `Simpan Kas Awal (${activeAdminInputBranch})`}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-primary" /> Input & Kelola Kas Awal ({selectedBranch})
+                  </CardTitle>
+                  {currentFormReport?.initial_cash != null ? (
+                    <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs font-medium">
+                      <Lock className="h-3 w-3" /> Kas Awal {selectedBranch} Terkunci: {rupiah(currentFormReport.initial_cash)} (Tidak dapat diubah)
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="gap-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30 text-xs">
+                      Belum Diinput
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <form
+                  className="space-y-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    save.mutate();
+                  }}
+                >
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Kas Awal {selectedBranch} (Rp)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={initialCashInput}
+                        onChange={(e) => setInitialCashInput(e.target.value)}
+                        placeholder="0"
+                        disabled={save.isPending || currentFormReport?.initial_cash != null}
+                      />
+                      {currentFormReport?.initial_cash != null && (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-1">
+                          <Lock className="h-3 w-3 text-amber-500" />
+                          Kas awal sudah tersimpan permanen dan tidak dapat diedit.
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Catatan (opsional)</Label>
+                      <Input
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Catatan hari ini"
+                        disabled={save.isPending || currentFormReport?.initial_cash != null}
+                      />
+                    </div>
+                  </div>
+                  {currentFormReport?.initial_cash == null ? (
+                    <Button type="submit" disabled={save.isPending}>
+                      <Save className="h-4 w-4 mr-1" />
+                      Simpan Kas Awal ({selectedBranch})
+                    </Button>
+                  ) : (
+                    <Button type="button" disabled variant="secondary" className="gap-1.5 cursor-not-allowed opacity-70">
+                      <Lock className="h-4 w-4" />
+                      Kas Awal Sudah Disimpan & Terkunci
+                    </Button>
+                  )}
+                </form>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Ringkasan Aliran Kas & QRIS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">

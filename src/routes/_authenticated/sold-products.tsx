@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Search, Store } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, inferBranchFromEmail } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/sold-products")({
   validateSearch: (search: Record<string, unknown>) => {
@@ -40,7 +40,7 @@ const getCategoryDisplayName = (cat: string) => {
 };
 
 function SoldProductsDetail() {
-  const navigate = useNavigate({ from: Route.fullPath });
+  const navigate = useNavigate();
   const { role: rawRole, user, branchName } = useAuth();
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
@@ -255,21 +255,23 @@ function SoldProductsDetail() {
     return Array.from(set);
   }, [branches, userRoles, allTransactions, cashierBranchMap]);
 
+  const cashierAssignedBranch = useMemo(() => {
+    return (
+      branchName ||
+      (user?.id ? cashierBranchMap[user.id] : null) ||
+      inferBranchFromEmail(user?.email) ||
+      "Cabang 1"
+    );
+  }, [branchName, user?.id, user?.email, cashierBranchMap]);
+
+  const effectiveSelectedBranch = role === "cashier" ? cashierAssignedBranch : selectedBranch;
+
   const transactions = useMemo(() => {
-    if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
-      return allTransactions.filter((t: any) => {
-        if (user?.id && t.cashier_id === user.id) return true;
-        const b = getTxBranch(t);
-        if (myBranch && b) return branchMatch(b, myBranch);
-        return false;
-      });
-    }
-    if (role === "admin" && selectedBranch !== "all") {
-      return allTransactions.filter((t: any) => branchMatch(getTxBranch(t), selectedBranch));
+    if (effectiveSelectedBranch !== "all") {
+      return allTransactions.filter((t: any) => branchMatch(getTxBranch(t), effectiveSelectedBranch));
     }
     return allTransactions;
-  }, [allTransactions, role, branchName, user?.id, cashierBranchMap, selectedBranch]);
+  }, [allTransactions, effectiveSelectedBranch, cashierBranchMap]);
   const items = data?.items ?? [];
   const products = data?.products ?? [];
 
@@ -419,22 +421,26 @@ function SoldProductsDetail() {
           </Link>
           <div>
             <h1 className="text-xl font-bold">Detail Produk Terjual</h1>
-            {role === "admin" && selectedBranch !== "all" && (
+            {role === "cashier" ? (
+              <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
+                <Store className="h-3.5 w-3.5" />
+                Cabang: <span className="font-semibold">{cashierAssignedBranch}</span>
+              </p>
+            ) : selectedBranch !== "all" ? (
               <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
                 <Store className="h-3.5 w-3.5" />
                 Cabang: <span className="font-semibold">{selectedBranch}</span>
               </p>
-            )}
-            {role === "cashier" && (
+            ) : (
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                <Store className="h-3.5 w-3.5" />
-                Cabang: <span className="font-medium">{branchName || "Cabang Kasir"}</span>
+                <Store className="h-3.5 w-3.5 text-primary" />
+                <span>Semua Cabang</span>
               </p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Branch Filter for Admin */}
+          {/* Branch Filter (Only for Admin) */}
           {role === "admin" && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</span>

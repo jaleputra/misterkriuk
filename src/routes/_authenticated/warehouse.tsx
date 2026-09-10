@@ -19,9 +19,18 @@ import { rupiah } from "@/lib/format";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PackagePlus, History, Plus, Trash2, Pencil, Eye, Search, Store } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, inferBranchFromEmail } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/warehouse")({
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      dateFilter: (search.dateFilter as string) || undefined,
+      fromDate: (search.fromDate as string) || undefined,
+      toDate: (search.toDate as string) || undefined,
+      type: (search.type as string) || undefined,
+      branch: (search.branch as string) || undefined,
+    };
+  },
   ssr: false,
   component: WarehousePage,
 });
@@ -159,44 +168,54 @@ function WarehousePage() {
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
+  const cashierAssignedBranch = useMemo(() => {
+    return (
+      branchName ||
+      (user?.id ? cashierBranchMap[user.id] : null) ||
+      inferBranchFromEmail(user?.email) ||
+      "Cabang 1"
+    );
+  }, [branchName, user?.id, user?.email, cashierBranchMap]);
+
+  const effectiveHistoryBranch = role === "cashier" ? cashierAssignedBranch : historyBranchFilter;
+
   const filteredEntries = useMemo(() => {
     let list = entries as any[];
     if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
-      list = list.filter((e) => {
-        if (user?.id && e.created_by === user.id) return true;
-        const eb = getEntryBranch(e);
-        if (myBranch && eb) return branchMatch(eb, myBranch);
-        return false;
-      });
-    } else if (role === "admin" && historyBranchFilter !== "all") {
-      list = list.filter((e) => branchMatch(getEntryBranch(e), historyBranchFilter));
+      list = list.filter((e) => branchMatch(getEntryBranch(e), cashierAssignedBranch));
+    } else if (effectiveHistoryBranch !== "all") {
+      list = list.filter((e) => branchMatch(getEntryBranch(e), effectiveHistoryBranch));
     }
 
     const term = search.trim().toLocaleLowerCase("id-ID");
     if (term.length < 3) return list;
     return list.filter((entry) => {
-      const names = entry.stock_movements
+      const movements = Array.isArray(entry.stock_movements) ? entry.stock_movements : [];
+      const names = movements
         .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
         .join(" ");
       const bName = getEntryBranch(entry) ?? "";
+      const dateStr = entry.restock_date
+        ? new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+        : "";
       const hay = [
         names,
         entry.branch_name,
         bName,
         entry.restock_date,
-        new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
+        dateStr,
         String(entry.shipping_cost ?? ""),
       ]
         .join(" ")
         .toLocaleLowerCase("id-ID");
       return hay.includes(term);
     });
-  }, [entries, role, branchName, cashierBranchMap, user?.id, historyBranchFilter, search]);
+  }, [entries, role, cashierAssignedBranch, effectiveHistoryBranch, cashierBranchMap, search]);
 
   const totalHistoryAmount = useMemo(() => {
     return filteredEntries.reduce((sum, entry) => {
-      const movementsCost = (entry.stock_movements ?? []).reduce(
+      const movements = Array.isArray(entry.stock_movements) ? entry.stock_movements : [];
+      const movementsCost = movements.reduce(
         (s: number, m: any) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
         0
       );
@@ -227,10 +246,7 @@ function WarehousePage() {
       if (new Set(validLines.map((line) => line.product_name.trim().toLowerCase())).size !== validLines.length)
         throw new Error("Produk yang sama tidak boleh dimasukkan dua kali");
 
-      const assignedBranch = role === "cashier" ? (branchName || null) : (selectedBranch.trim() || null);
-      if (role === "admin" && !selectedBranch.trim()) {
-        throw new Error("Admin wajib memilih cabang untuk pengeluaran ini!");
-      }
+      const assignedBranch = role === "cashier" ? cashierAssignedBranch : (selectedBranch.trim() || "Cabang 1");
 
       const { data: u } = await supabase.auth.getUser();
 
@@ -377,8 +393,9 @@ function WarehousePage() {
     setEntryType((entry.entry_type as "expense" | "restock") ?? "expense");
     setSelectedBranch(entry.branch_name || "");
 
+    const movements = Array.isArray(entry.stock_movements) ? entry.stock_movements : [];
     setLines(
-      entry.stock_movements.map((movement: any) => ({
+      movements.map((movement: any) => ({
         product_name: (movement.products?.name ?? "").replace(/^\[GUDANG\]\s*/, ""),
         quantity: String(movement.quantity),
         initial_price: String(movement.initial_price),
@@ -415,11 +432,9 @@ function WarehousePage() {
           >
             {/* Pilihan Cabang */}
             <div className="space-y-1.5">
-              <Label>
-                Cabang {role === "admin" && <span className="text-destructive">*</span>}
-              </Label>
+              <Label>Cabang</Label>
               {role === "admin" ? (
-                <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                <Select value={selectedBranch || "Cabang 1"} onValueChange={setSelectedBranch}>
                   <SelectTrigger>
                     <SelectValue placeholder="-- Pilih Cabang Pengeluaran --" />
                   </SelectTrigger>
@@ -433,15 +448,10 @@ function WarehousePage() {
                 </Select>
               ) : (
                 <Input
-                  value={branchName || "Cabang Utama"}
+                  value={cashierAssignedBranch}
                   disabled
-                  className="bg-muted text-muted-foreground font-medium"
+                  className="bg-muted text-foreground font-semibold"
                 />
-              )}
-              {role === "admin" && !selectedBranch && (
-                <p className="text-[11px] text-muted-foreground">
-                  Sebagai Admin, Anda harus menentukan cabang mana yang mengeluarkan biaya ini.
-                </p>
               )}
             </div>
 
@@ -600,8 +610,8 @@ function WarehousePage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-col gap-2.5 border-b pb-3 mb-2">
-            {/* Filter Cabang untuk Admin */}
-            {role === "admin" && (
+            {/* Filter Cabang Riwayat */}
+            {role === "admin" ? (
               <div className="flex items-center justify-between flex-wrap gap-2 p-2 bg-muted/40 rounded-lg border">
                 <div className="flex items-center gap-1.5">
                   <Store className="h-3.5 w-3.5 text-primary" />
@@ -630,6 +640,14 @@ function WarehousePage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between flex-wrap gap-2 p-2 bg-muted/40 rounded-lg border">
+                <div className="flex items-center gap-1.5">
+                  <Store className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">Cabang:</span>
+                </div>
+                <span className="text-xs font-bold text-primary">{cashierAssignedBranch}</span>
               </div>
             )}
 
@@ -700,24 +718,28 @@ function WarehousePage() {
           {entries.length > 0 && filteredEntries.length === 0 && (
             <p className="text-sm text-muted-foreground">Tidak ada riwayat yang cocok.</p>
           )}
-          {filteredEntries.map((entry: any) => (
+          {filteredEntries.map((entry: any) => {
+            const movements = Array.isArray(entry.stock_movements) ? entry.stock_movements : [];
+            return (
             <div
               key={entry.id}
               className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card"
             >
               <div className="space-y-0.5">
                 <div className="font-semibold text-sm sm:text-base text-foreground">
-                  {entry.stock_movements
+                  {movements
                     .map((m: any) => (m.products?.name ?? "").replace(/^\[GUDANG\]\s*/i, ""))
                     .filter(Boolean)
                     .join(", ")}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
+                  {entry.restock_date
+                    ? new Date(`${entry.restock_date}T00:00:00`).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })
+                    : "—"}
                 </div>
                 <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
                   <span
@@ -736,9 +758,9 @@ function WarehousePage() {
                     </span>
                   )}
                   <span>
-                    {entry.stock_movements.length} produk ·{" "}
-                    {entry.stock_movements.reduce(
-                      (sum: number, movement: any) => sum + movement.quantity,
+                    {movements.length} produk ·{" "}
+                    {movements.reduce(
+                      (sum: number, movement: any) => sum + Number(movement.quantity || 0),
                       0,
                     )}{" "}
                     pcs
@@ -750,7 +772,7 @@ function WarehousePage() {
                 <div className="font-semibold text-sm sm:text-base text-foreground">
                   {rupiah(
                     Number(entry.shipping_cost ?? 0) +
-                    entry.stock_movements.reduce(
+                    movements.reduce(
                       (s: number, m: any) => s + Number(m.quantity ?? 0) * Number(m.initial_price ?? 0),
                       0
                     )
@@ -785,7 +807,8 @@ function WarehousePage() {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
       <Dialog
@@ -811,7 +834,7 @@ function WarehousePage() {
                 <span>{rupiah(selectedEntry.shipping_cost)}</span>
               </div>
               <div className="border-t pt-2 space-y-2">
-                {selectedEntry.stock_movements.map((movement: any) => (
+                {(Array.isArray(selectedEntry.stock_movements) ? selectedEntry.stock_movements : []).map((movement: any) => (
                   <div key={movement.id} className="flex justify-between gap-4">
                     <div>
                       <div className="font-medium">

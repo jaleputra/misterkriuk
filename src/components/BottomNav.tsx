@@ -26,12 +26,12 @@ export function BottomNav({ role }: { role: AppRole }) {
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/80 bg-card/90 backdrop-blur-lg supports-[backdrop-filter]:bg-card/85 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.03)]">
       <div className="mx-auto max-w-4xl px-2 py-1.5 grid gap-1" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0,1fr))` }}>
         {visible.map((item) => {
-          const active = pathname.startsWith(item.to) || (item.to === "/dashboard" && role === "cashier" && pathname.startsWith("/income-details"));
+          const active = pathname.startsWith(item.to);
           const Icon = item.icon;
           return (
             <Link
               key={item.to}
-              to={item.to === "/dashboard" && role === "cashier" ? "/income-details" : item.to}
+              to={item.to}
               className={cn(
                 "relative flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-medium transition-all duration-200",
                 active 

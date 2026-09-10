@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAuth, inferBranchFromEmail } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { rupiah } from "@/lib/format";
 import { useMemo, useState, useEffect } from "react";
@@ -11,8 +11,31 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Share2, Trash2, Save, Plus, Minus, X, Search, Store, User } from "lucide-react";
+import {
+  ArrowLeft,
+  Printer,
+  Share2,
+  Trash2,
+  Save,
+  Plus,
+  Minus,
+  X,
+  Search,
+  Store,
+  User,
+  Banknote,
+  CreditCard,
+  Receipt as ReceiptIcon,
+} from "lucide-react";
 import { printReceiptThermalClient, isPrinterConnectedClient } from "@/lib/thermal-printer.actions";
 import { printReceiptPdfClient, shareReceiptImageClient } from "@/lib/receipt-pdf.actions";
 import { Receipt } from "@/components/Receipt";
@@ -40,7 +63,7 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 });
 
 function IncomeDetails() {
-  const navigate = useNavigate({ from: Route.fullPath });
+  const navigate = useNavigate();
   const { role: rawRole, user, branchName } = useAuth();
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
@@ -53,9 +76,18 @@ function IncomeDetails() {
   const [fromDate, setFromDate] = useState<string>(searchParams.fromDate || "");
   const [toDate, setToDate] = useState<string>(searchParams.toDate || "");
   const [search, setSearch] = useState("");
+  const [saleCategoryFilter, setSaleCategoryFilter] = useState<"regular" | "partner" | "all">(
+    searchParams.saleCategory || "all"
+  );
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "cash" | "qris">("all");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  useEffect(() => {
+    if (searchParams.saleCategory !== undefined) {
+      setSaleCategoryFilter(searchParams.saleCategory);
+    }
+  }, [searchParams.saleCategory]);
 
   const [selectedBranch, setSelectedBranch] = useState<string>(() => {
     if (searchParams.branch) return searchParams.branch;
@@ -268,24 +300,25 @@ function IncomeDetails() {
     return Array.from(set);
   }, [branches, userRoles, allTxs, cashierBranchMap, profilesMap]);
 
-  const saleCategoryFilter = searchParams.saleCategory;
+  const cashierAssignedBranch = useMemo(() => {
+    return (
+      branchName ||
+      (user?.id ? cashierBranchMap[user.id] : null) ||
+      inferBranchFromEmail(user?.email) ||
+      "Cabang 1"
+    );
+  }, [branchName, user?.id, user?.email, cashierBranchMap]);
+
+  const effectiveSelectedBranch = role === "cashier" ? cashierAssignedBranch : selectedBranch;
 
   const txs = useMemo(() => {
     let filtered = allTxs;
 
-    // Filter by branch for cashier
-    if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
-      filtered = filtered.filter((t: any) => {
-        if (user?.id && t.cashier_id === user.id) return true;
-        const b = getTxBranch(t);
-        if (myBranch && b) return branchMatch(b, myBranch);
-        return false;
-      });
-    } else if (role === "admin" && selectedBranch !== "all") {
+    // Filter by branch
+    if (effectiveSelectedBranch !== "all") {
       filtered = filtered.filter((t: any) => {
         const b = getTxBranch(t);
-        return branchMatch(b, selectedBranch);
+        return branchMatch(b, effectiveSelectedBranch);
       });
     }
 
@@ -540,22 +573,26 @@ function IncomeDetails() {
             <h1 className="text-xl font-bold">
               {saleCategoryFilter === "partner" ? "Detail Penjualan Partner" : "Detail Pemasukan"}
             </h1>
-            {role === "admin" && selectedBranch !== "all" && (
+            {role === "cashier" ? (
+              <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
+                <Store className="h-3.5 w-3.5" />
+                Cabang: <span className="font-semibold">{cashierAssignedBranch}</span>
+              </p>
+            ) : selectedBranch !== "all" ? (
               <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
                 <Store className="h-3.5 w-3.5" />
                 Cabang: <span className="font-semibold">{selectedBranch}</span>
               </p>
-            )}
-            {role === "cashier" && (
+            ) : (
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                <Store className="h-3.5 w-3.5" />
-                Cabang: <span className="font-medium">{branchName || "Cabang Kasir"}</span>
+                <Store className="h-3.5 w-3.5 text-primary" />
+                <span>Semua Cabang</span>
               </p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Branch Filter for Admin */}
+          {/* Branch Filter (Only for Admin) */}
           {role === "admin" && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</span>
@@ -645,48 +682,134 @@ function IncomeDetails() {
       )}
 
       <Card>
-        <CardContent className="p-2 md:p-4">
+        <CardHeader className="p-4 pb-2">
+          <div className="flex justify-between items-center">
+            <h2 className="text-sm font-semibold flex items-center gap-1.5">
+              <ReceiptIcon className="h-4 w-4 text-primary" />
+              Rincian Transaksi Pemasukan ({txs.length})
+            </h2>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
           {txs.length === 0 ? (
-            <p className="text-center text-muted-foreground py-6 text-sm">
+            <p className="text-center text-muted-foreground py-8 text-sm">
               Belum ada {saleCategoryFilter === "partner" ? "penjualan partner" : "transaksi"} di periode ini.
             </p>
           ) : (
-            <div className="divide-y">
-              {txs.map((t) => (
-                <div
-                  key={t.id}
-                  onClick={() => openTx(t)}
-                  className="flex justify-between items-center py-3 px-2 text-sm cursor-pointer hover:bg-muted/50 rounded transition active:scale-[0.99]"
-                >
-                  <div className="min-w-0">
-                    <div className="font-semibold truncate flex items-center gap-1.5 flex-wrap">
-                      <span>No: {t.id.slice(0, 8).toUpperCase()}</span>
-                      {t.partner_name ? ` · Partner: ${t.partner_name}` : t.buyer_name ? ` · ${t.buyer_name}` : ""}
-                      {getTxBranch(t) && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal bg-primary/10 text-primary border-primary/20">
-                          <Store className="h-2.5 w-2.5 mr-0.5" />
-                          {getTxBranch(t)}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap mt-0.5">
-                      <span>{new Date(t.created_at).toLocaleString("id-ID")}</span>
-                      <span>•</span>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/80 text-[11px] font-medium text-foreground/85">
-                        <User className="h-3 w-3 text-muted-foreground" />
-                        Akun: <strong className="text-primary font-semibold">{getCashierAccountDisplay(t.cashier_id)}</strong>
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0 pl-2">
-                    <div className="font-bold text-success">{rupiah(t.total)}</div>
-                    <div className="text-[10px] text-muted-foreground capitalize">
-                      {t.payment_method}
-                      {t.house_block ? ` · Blok ${t.house_block}` : ""}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="w-[180px] font-semibold text-xs">Transaksi / Waktu</TableHead>
+                    <TableHead className="min-w-[200px] font-semibold text-xs">Rincian Item & Pelanggan</TableHead>
+                    <TableHead className="w-[140px] text-center font-semibold text-xs">Metode Pembayaran</TableHead>
+                    <TableHead className="w-[130px] text-right font-semibold text-xs">Total Tagihan</TableHead>
+                    <TableHead className="w-[90px] text-center font-semibold text-xs">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {txs.map((t) => {
+                    const txItems = items.filter((i) => i.transaction_id === t.id);
+                    const isCash = t.payment_method === "cash";
+                    return (
+                      <TableRow
+                        key={t.id}
+                        className="hover:bg-muted/50 cursor-pointer transition"
+                        onClick={() => openTx(t)}
+                      >
+                        <TableCell className="align-middle py-3">
+                          <div className="font-semibold text-xs text-foreground flex items-center gap-1 flex-wrap">
+                            <span>#{t.id.slice(0, 8).toUpperCase()}</span>
+                            {getTxBranch(t) && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1 py-0 h-4 font-normal bg-primary/10 text-primary border-primary/20"
+                              >
+                                {getTxBranch(t)}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                            {new Date(t.created_at).toLocaleString("id-ID")}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                            <User className="h-2.5 w-2.5" />
+                            <span>{getCashierAccountDisplay(t.cashier_id)}</span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="align-middle py-3">
+                          <div className="text-xs font-medium text-foreground">
+                            {t.partner_name ? (
+                              <>
+                                <span className="text-primary font-semibold">Partner: {t.partner_name}</span>
+                                {t.house_block && (
+                                  <span className="text-muted-foreground font-normal text-[11px] ml-1">
+                                    (Blok {t.house_block})
+                                  </span>
+                                )}
+                              </>
+                            ) : t.buyer_name ? (
+                              <>
+                                <span>{t.buyer_name}</span>
+                                {t.house_block && (
+                                  <span className="text-muted-foreground font-normal text-[11px] ml-1">
+                                    (Blok {t.house_block})
+                                  </span>
+                                )}
+                              </>
+                            ) : t.house_block ? (
+                              <span>Blok {t.house_block}</span>
+                            ) : (
+                              <span className="text-muted-foreground">Customer</span>
+                            )}
+                          </div>
+                          {txItems.length > 0 && (
+                            <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                              {txItems.map((it) => `${it.product_name} (${it.quantity})`).join(", ")}
+                            </div>
+                          )}
+                        </TableCell>
+
+                        {/* Kolom Tengah: Keterangan CASH / QRIS */}
+                        <TableCell className="align-middle text-center py-3">
+                          {isCash ? (
+                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase px-2.5 py-0.5 shadow-sm inline-flex items-center gap-1">
+                              <Banknote className="h-3 w-3" />
+                              CASH
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase px-2.5 py-0.5 shadow-sm inline-flex items-center gap-1">
+                              <CreditCard className="h-3 w-3" />
+                              QRIS
+                            </Badge>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="align-middle text-right py-3">
+                          <div className="font-bold text-success text-sm">{rupiah(t.total)}</div>
+                          {isCash && t.cash_received && Number(t.cash_received) > Number(t.total) && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              Kembalian: {rupiah(t.change_amount || Number(t.cash_received) - Number(t.total))}
+                            </div>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="align-middle text-center py-3" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-2"
+                            onClick={() => openTx(t)}
+                          >
+                            Detail
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

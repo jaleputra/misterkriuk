@@ -1198,440 +1198,106 @@ function SettingsPage() {
 
   if (effectiveRole === "cashier") {
     return (
-      <Tabs defaultValue="absen" className="space-y-4">
-        <TabsList className="grid grid-cols-2 w-full max-w-md">
-          <TabsTrigger value="absen" className="text-xs sm:text-sm font-semibold">
-            <Clock className="h-4 w-4 mr-1.5 text-primary" /> Absen & Istirahat
-          </TabsTrigger>
-          <TabsTrigger value="printer" className="text-xs sm:text-sm font-semibold">
-            <Printer className="h-4 w-4 mr-1.5" /> Printer Thermal
-          </TabsTrigger>
-        </TabsList>
+      <div className="space-y-4">
+        {/* Header Pengaturan Kasir */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <Printer className="h-5 w-5 text-primary" /> Pengaturan Printer Thermal
+            </h1>
+            <p className="text-xs text-muted-foreground font-medium mt-0.5 flex items-center gap-1">
+              <Store className="h-3.5 w-3.5 text-primary" />
+              Cabang: <span className="font-semibold text-foreground">{cashierAssignedBranch}</span>
+            </p>
+          </div>
+        </div>
 
-        {/* Tab Absen & Istirahat untuk Kasir */}
-        <TabsContent value="absen" className="space-y-4">
-          {/* Card Ringkasan Status Shift Kasir Hari Ini */}
-          <Card className="border-border/80 shadow-xs bg-card/80">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-primary" /> Status Shift Kasir Hari Ini
-                </CardTitle>
-                <div>
-                  {!todayCashierAtt ? (
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-xs">
-                      Belum Absen Masuk
-                    </Badge>
-                  ) : todayCashierAtt.clock_out_time ? (
-                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold">
-                      <CheckCheck className="h-3.5 w-3.5 mr-1" /> Selesai Shift
-                    </Badge>
-                  ) : activeBreak ? (
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-xs font-semibold animate-pulse">
-                      <Coffee className="h-3.5 w-3.5 mr-1" /> Sedang Istirahat
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold">
-                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Sedang Bertugas (Hadir)
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0 text-xs">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-muted/40 p-3.5 rounded-xl border border-border/60">
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">Cabang Tugas:</span>
-                  <span className="font-bold text-foreground text-xs sm:text-sm flex items-center gap-1 mt-0.5">
-                    <Store className="h-3.5 w-3.5 text-primary shrink-0" />
-                    {cashierAssignedBranch}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">Jam Masuk:</span>
-                  <span className="font-bold text-foreground text-xs sm:text-sm flex items-center gap-1 mt-0.5">
-                    <Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    {todayCashierAtt?.clock_in_time
-                      ? new Date(todayCashierAtt.clock_in_time).toLocaleTimeString("id-ID", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "-"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">Jam Pulang:</span>
-                  <span className="font-bold text-foreground text-xs sm:text-sm flex items-center gap-1 mt-0.5">
-                    <LogOut className="h-3.5 w-3.5 text-rose-500 shrink-0" />
-                    {todayCashierAtt?.clock_out_time
-                      ? new Date(todayCashierAtt.clock_out_time).toLocaleTimeString("id-ID", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "Belum Pulang"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">Total Istirahat:</span>
-                  <span className="font-bold text-foreground text-xs sm:text-sm flex items-center gap-1 mt-0.5">
-                    <Coffee className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                    {getTotalBreakMinutes(todayCashierAtt?.breaks)} m ({todayCashierAtt?.breaks?.length || 0}x)
-                  </span>
-                </div>
-              </div>
-
-              {!todayCashierAtt && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center justify-between flex-wrap gap-2 text-amber-800 dark:text-amber-300">
-                  <span>Anda belum melakukan absen masuk untuk shift hari ini.</span>
-                  <Button size="sm" asChild className="h-7 text-xs font-semibold">
-                    <Link to="/attendance">Buka Halaman Absen Masuk</Link>
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Card Manajemen Istirahat (Bisa Lebih dari 1 Kali Sehari) */}
-          <Card className="border-border/80 shadow-xs">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Coffee className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                Manajemen Waktu Istirahat
+        {/* Card Printer Thermal untuk Kasir */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Printer className="h-4 w-4" /> Printer Thermal
               </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0 text-xs">
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Gunakan tombol di bawah untuk mencatat waktu istirahat shift. Istirahat dapat dilakukan{" "}
-                <strong>lebih dari 1 kali dalam sehari</strong> dan setiap sesi akan otomatis tercatat waktunya.
-              </p>
-
-              {/* Status Banner Jika Sedang Istirahat */}
-              {activeBreak ? (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 space-y-3">
-                  <div className="flex items-start justify-between flex-wrap gap-2">
-                    <div className="space-y-1">
-                      <div className="font-bold text-sm flex items-center gap-2">
-                        <Coffee className="h-4 w-4 animate-bounce text-amber-600 dark:text-amber-400" />
-                        Sedang Dalam Masa Istirahat
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Mulai istirahat pukul:{" "}
-                        <span className="font-semibold text-foreground font-mono">
-                          {new Date(activeBreak.start_time).toLocaleTimeString("id-ID", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="bg-background/80 px-3 py-1.5 rounded-lg border border-border shadow-xs text-right">
-                      <span className="text-[10px] text-muted-foreground block">Durasi Berjalan:</span>
-                      <span className="font-mono font-bold text-sm text-primary">
-                        {formatSeconds(breakTimerSeconds)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Button
-                    className="w-full h-10 font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-                    disabled={breakLoading}
-                    onClick={handleEndBreak}
-                  >
-                    <CheckCheck className="h-4 w-4 mr-2" />
-                    {breakLoading ? "Memproses..." : "Selesai & Kembali dari Istirahat (Lanjut Bekerja)"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <Button
-                    variant="outline"
-                    className="w-full h-10 font-semibold border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 text-amber-800 dark:text-amber-300"
-                    disabled={breakLoading || !todayCashierAtt || !!todayCashierAtt.clock_out_time}
-                    onClick={handleStartBreak}
-                  >
-                    <Coffee className="h-4 w-4 mr-2 text-amber-600" />
-                    {breakLoading ? "Memproses..." : "Mulai Istirahat"}
-                  </Button>
-
-                  {todayCashierAtt?.clock_out_time && (
-                    <p className="text-[11px] text-muted-foreground text-center">
-                      Shift kerja hari ini telah selesai (sudah absen pulang). Tombol istirahat tidak aktif.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Riwayat Sesi Istirahat Hari Ini */}
-              <div className="space-y-2 pt-2 border-t border-border/60">
-                <span className="text-[11px] font-semibold text-foreground block">
-                  Riwayat Sesi Istirahat Hari Ini ({todayCashierAtt?.breaks?.length || 0}):
+              {btDiag.supported ? (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> Web Bluetooth Aktif
                 </span>
-                {!todayCashierAtt?.breaks || todayCashierAtt.breaks.length === 0 ? (
-                  <p className="text-[11px] text-muted-foreground italic">Belum ada sesi istirahat hari ini.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {todayCashierAtt.breaks.map((b, idx) => (
-                      <div
-                        key={b.id || idx}
-                        className="flex items-center justify-between p-2 rounded-lg bg-muted/40 border border-border/60 text-xs"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="h-5 w-5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold flex items-center justify-center">
-                            {idx + 1}
-                          </span>
-                          <span>
-                            {new Date(b.start_time).toLocaleTimeString("id-ID", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}{" "}
-                            -{" "}
-                            {b.end_time
-                              ? new Date(b.end_time).toLocaleTimeString("id-ID", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "Sedang berjalan..."}
-                          </span>
-                        </div>
-                        <Badge variant="secondary" className="text-[10px] font-mono">
-                          {typeof b.duration_minutes === "number" ? `${b.duration_minutes} menit` : "Aktif"}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              ) : (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Bluetooth Tidak Didukung
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!btDiag.supported && (
+              <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 p-3.5 text-xs text-amber-900 dark:text-amber-300 space-y-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-800 dark:text-amber-400">
+                  <Info className="h-4 w-4 shrink-0" />
+                  Info Kompatibilitas Browser
+                </div>
+                <p className="leading-relaxed">
+                  {btDiag.message || "Browser ini tidak mendukung Web Bluetooth."}
+                </p>
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
+                  💡 <strong>Solusi:</strong> Gunakan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong> di Laptop/PC/Android. Anda juga tetap bisa mencetak struk menggunakan opsi <strong>Cetak Struk Sistem (PDF)</strong>.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            )}
 
-          {/* Card Absen Pulang (1 Kali Sehari, Validasi GPS Lokasi Cabang) */}
-          <Card className="border-border/80 shadow-xs">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <LogOut className="h-4 w-4 text-rose-500" />
-                Absensi Pulang Kasir
-              </CardTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs px-2.5"
-                disabled={cashierGeoLoading}
-                onClick={detectCashierLocation}
-              >
-                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${cashierGeoLoading ? "animate-spin" : ""}`} />
-                {cashierGeoLoading ? "Mendeteksi..." : "Refresh GPS"}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Nama Printer</Label>
+                <Input value={form.printer_name} disabled placeholder="Belum terhubung" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Lebar Kertas</Label>
+                <Select value={String(form.paper_width)} disabled>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="58">58 mm</SelectItem>
+                    <SelectItem value="80">80 mm</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              {printerConnected ? (
+                <Button variant="destructive" onClick={handleDisconnectPrinter} disabled={printerBusy}>
+                  Putuskan Printer
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={handleConnectPrinter} disabled={printerBusy}>
+                  Sambungkan Printer Bluetooth
+                </Button>
+              )}
+              <Button variant="secondary" onClick={handleTestPrint} disabled={!printerConnected || printerBusy}>
+                Test Bluetooth (ESC/POS)
               </Button>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0 text-xs">
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Absen pulang dilakukan saat shift kerja Anda selesai. Absen masuk dan pulang hanya dapat dilakukan{" "}
-                <strong>1 kali dalam sehari</strong> dan wajib berada di titik lokasi cabang toko{" "}
-                <strong>({cashierAssignedBranch})</strong>.
-              </p>
-
-              {/* Status Sudah Absen Pulang */}
-              {todayCashierAtt?.clock_out_time ? (
-                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 dark:text-emerald-300 space-y-2">
-                  <div className="flex items-center gap-2 font-bold text-sm">
-                    <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    Anda Sudah Melakukan Absen Pulang Hari Ini
-                  </div>
-                  <p className="text-xs leading-relaxed opacity-90">
-                    Waktu absen pulang:{" "}
-                    <span className="font-mono font-bold">
-                      {new Date(todayCashierAtt.clock_out_time).toLocaleTimeString("id-ID", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      })}
-                    </span>
-                    . Shift kerja Anda hari ini telah selesai.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* Status GPS Kasir */}
-                  {cashierGeoError ? (
-                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs space-y-2">
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>{cashierGeoError}</span>
-                      </div>
-                      <Button size="sm" variant="outline" className="h-7 text-xs bg-background" onClick={detectCashierLocation}>
-                        Coba Deteksi Ulang GPS
-                      </Button>
-                    </div>
-                  ) : cashierCoords ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2 bg-muted/40 p-3 rounded-lg border border-border/60">
-                        <div>
-                          <span className="text-muted-foreground block text-[11px]">Koordinat Anda:</span>
-                          <span className="font-mono font-medium text-foreground text-[11px]">
-                            {cashierCoords.latitude.toFixed(6)}, {cashierCoords.longitude.toFixed(6)}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-[11px]">Titik Target {cashierAssignedBranch}:</span>
-                          <span className="font-medium text-foreground text-[11px]">
-                            Jarak {cashierDistance ?? 0}m (Maks: {cashierBranchConfig.radius_meters}m)
-                          </span>
-                        </div>
-                      </div>
-
-                      <div
-                        className={`p-3 rounded-lg border text-xs flex items-center gap-2 ${
-                          cashierIsWithinRadius
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                            : "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300"
-                        }`}
-                      >
-                        {cashierIsWithinRadius ? (
-                          <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-                        ) : (
-                          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-                        )}
-                        <span>
-                          {cashierIsWithinRadius
-                            ? `Lokasi valid di dalam radius cabang ${cashierAssignedBranch} (${cashierDistance}m). Anda dapat absen pulang.`
-                            : `Anda berada ${cashierDistance}m dari cabang ${cashierAssignedBranch}. Harus berada dalam radius ${cashierBranchConfig.radius_meters}m untuk absen pulang.`}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="py-4 text-center text-muted-foreground">
-                      <RefreshCw className="h-4 w-4 animate-spin mx-auto mb-1.5 text-primary" />
-                      <span>Sedang mendeteksi sinyal GPS perangkat Anda...</span>
-                    </div>
-                  )}
-
-                  {/* Tombol Absen Pulang */}
-                  <Button
-                    className="w-full h-11 text-sm font-bold shadow-sm bg-rose-600 hover:bg-rose-700 text-white"
-                    disabled={
-                      clockOutLoading ||
-                      !todayCashierAtt ||
-                      !cashierCoords ||
-                      !cashierIsWithinRadius
-                    }
-                    onClick={handleCashierClockOut}
-                  >
-                    {clockOutLoading ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Memproses Absen Pulang...
-                      </>
-                    ) : (
-                      <>
-                        <LogOut className="h-4 w-4 mr-2" /> Klik Absen Pulang (Selesai Shift)
-                      </>
-                    )}
-                  </Button>
-
-                  {!todayCashierAtt && (
-                    <p className="text-[11px] text-center text-muted-foreground">
-                      ⚠️ Anda belum melakukan absen masuk hari ini.
-                    </p>
-                  )}
-                  {todayCashierAtt && !cashierIsWithinRadius && cashierCoords && (
-                    <p className="text-[11px] text-center text-amber-600 dark:text-amber-400">
-                      ⚠️ Anda harus berada di lokasi cabang ({cashierBranchConfig.radius_meters}m) untuk dapat absen pulang.
-                    </p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab Printer Thermal untuk Kasir */}
-        <TabsContent value="printer" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Printer className="h-4 w-4" /> Printer Thermal
-                </CardTitle>
-                {btDiag.supported ? (
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Web Bluetooth Aktif
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" /> Bluetooth Tidak Didukung
-                  </span>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!btDiag.supported && (
-                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 p-3.5 text-xs text-amber-900 dark:text-amber-300 space-y-1.5">
-                  <div className="font-semibold flex items-center gap-1.5 text-amber-800 dark:text-amber-400">
-                    <Info className="h-4 w-4 shrink-0" />
-                    Info Kompatibilitas Browser
-                  </div>
-                  <p className="leading-relaxed">
-                    {btDiag.message || "Browser ini tidak mendukung Web Bluetooth."}
-                  </p>
-                  <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
-                    💡 <strong>Solusi:</strong> Gunakan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong> di Laptop/PC/Android. Anda juga tetap bisa mencetak struk menggunakan opsi <strong>Cetak Struk Sistem (PDF)</strong>.
-                  </p>
-                </div>
-              )}
-
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Nama Printer</Label>
-                  <Input value={form.printer_name} disabled placeholder="Belum terhubung" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Lebar Kertas</Label>
-                  <Select value={String(form.paper_width)} disabled>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="58">58 mm</SelectItem>
-                      <SelectItem value="80">80 mm</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap pt-1">
-                {printerConnected ? (
-                  <Button variant="destructive" onClick={handleDisconnectPrinter} disabled={printerBusy}>
-                    Putuskan Printer
-                  </Button>
-                ) : (
-                  <Button variant="outline" onClick={handleConnectPrinter} disabled={printerBusy}>
-                    Sambungkan Printer Bluetooth
-                  </Button>
-                )}
-                <Button variant="secondary" onClick={handleTestPrint} disabled={!printerConnected || printerBusy}>
-                  Test Bluetooth (ESC/POS)
-                </Button>
-                <Button variant="outline" onClick={handleTestPrintSystem}>
-                  Test Cetak Sistem (PDF)
-                </Button>
-                <span className={`text-xs px-2.5 py-1 rounded-md font-medium ${printerConnected ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
-                  {printerConnected ? "Terhubung" : "Tidak terhubung"}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Aktifkan Bluetooth di perangkat Anda dan printer, lalu klik "Sambungkan Printer Bluetooth". Saat transaksi kasir, struk akan otomatis langsung dicetak ke printer ini.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              <Button variant="outline" onClick={handleTestPrintSystem}>
+                Test Cetak Sistem (PDF)
+              </Button>
+              <span className={`text-xs px-2.5 py-1 rounded-md font-medium ${printerConnected ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+                {printerConnected ? "Terhubung" : "Tidak terhubung"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Aktifkan Bluetooth di perangkat Anda dan printer, lalu klik "Sambungkan Printer Bluetooth". Saat transaksi kasir, struk akan otomatis langsung dicetak ke printer ini.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <>
       <Tabs defaultValue="store" className="space-y-4">
-        <TabsList className="grid grid-cols-4 w-full max-w-xl">
+        <TabsList className="grid grid-cols-3 w-full max-w-md">
           <TabsTrigger value="store"><Store className="h-4 w-4 mr-1.5" />Umum</TabsTrigger>
-          <TabsTrigger value="absen"><MapPin className="h-4 w-4 mr-1.5" />Absen</TabsTrigger>
           <TabsTrigger value="event"><CalendarDays className="h-4 w-4 mr-1.5" />Event</TabsTrigger>
           <TabsTrigger value="users"><Users className="h-4 w-4 mr-1.5" />Akun</TabsTrigger>
         </TabsList>
@@ -1946,541 +1612,6 @@ function SettingsPage() {
             Simpan Pengaturan Printer & QRIS
           </Button>
         </div>
-      </TabsContent>
-
-      {/* TAB PENGATURAN ABSEN & HISTORY */}
-      <TabsContent value="absen" className="space-y-5">
-        {/* Card Pengaturan Titik Map Cabang */}
-        <Card className="border-border/80 shadow-xs">
-          <CardHeader>
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-primary" /> Pengaturan Titik Lokasi Absen (Geofencing)
-              </CardTitle>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">
-                Sesuai Pilihan Cabang
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Tentukan titik koordinat peta (Latitude & Longitude) dan batas radius toleransi per cabang. Kasir hanya dapat melakukan absen jika berada dalam batas radius titik ini.
-            </p>
-
-            <div className="grid sm:grid-cols-2 gap-3.5">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Pilih Cabang yang Diatur</Label>
-                <Select
-                  value={selectedAttBranch}
-                  onValueChange={(val) => {
-                    setSelectedAttBranch(val);
-                  }}
-                >
-                  <SelectTrigger className="text-xs h-9">
-                    <SelectValue placeholder="Pilih Cabang" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableBranches.map((b) => (
-                      <SelectItem key={b} value={b}>
-                        {b}
-                      </SelectItem>
-                    ))}
-                    {!availableBranches.includes("Cabang 1") && <SelectItem value="Cabang 1">Cabang 1</SelectItem>}
-                    {!availableBranches.includes("Cabang 2") && <SelectItem value="Cabang 2">Cabang 2</SelectItem>}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Batas Radius Toleransi Absen (Meter)</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min="10"
-                    max="5000"
-                    className="text-xs h-9"
-                    value={attMapForm.radius_meters}
-                    onChange={(e) =>
-                      setAttMapForm({ ...attMapForm, radius_meters: Math.max(10, Number(e.target.value) || 100) })
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground whitespace-nowrap font-medium">meter</span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <Label className="text-xs font-semibold">Latitude</Label>
-                  <span className="text-[10px] text-muted-foreground">Contoh: -6.208800</span>
-                </div>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  className="text-xs h-9 font-mono"
-                  value={attMapForm.latitude}
-                  onChange={(e) =>
-                    setAttMapForm({ ...attMapForm, latitude: parseFloat(e.target.value) || 0 })
-                  }
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <Label className="text-xs font-semibold">Longitude</Label>
-                  <span className="text-[10px] text-muted-foreground">Contoh: 106.845600</span>
-                </div>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  className="text-xs h-9 font-mono"
-                  value={attMapForm.longitude}
-                  onChange={(e) =>
-                    setAttMapForm({ ...attMapForm, longitude: parseFloat(e.target.value) || 0 })
-                  }
-                />
-              </div>
-
-              {/* Input Alamat yang langsung mencari koordinat dan merespon peta */}
-              <div className="sm:col-span-2 space-y-1.5 relative">
-                <div className="flex justify-between items-center">
-                  <Label className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
-                    <Search className="h-3.5 w-3.5 text-primary" /> Alamat / Patokan Cabang
-                  </Label>
-                  <span className="text-[10px] text-primary font-medium">Ketik langsung mengarahkan pin peta</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="relative flex-1">
-                    <Input
-                      placeholder="Ketik nama jalan / ruko / patokan, contoh: Jl. Boulevard Kelapa Gading / Monas..."
-                      className="text-xs h-9 pr-8 bg-card"
-                      value={attMapForm.address || ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setAttMapForm({ ...attMapForm, address: val });
-                        if (val.trim().length >= 3) {
-                          searchAddressCoordinates(val, false);
-                        } else {
-                          setShowAddressDropdown(false);
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (attMapForm.address) {
-                            searchAddressCoordinates(attMapForm.address, true);
-                          }
-                        }
-                      }}
-                    />
-                    {addressSearchLoading && (
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary absolute right-2.5 top-1/2 -translate-y-1/2" />
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="h-9 text-xs px-3 font-semibold shrink-0"
-                    disabled={addressSearchLoading || !attMapForm.address?.trim()}
-                    onClick={() => searchAddressCoordinates(attMapForm.address || "", true)}
-                  >
-                    <Search className="h-3.5 w-3.5 mr-1 text-primary" />
-                    Cari di Peta
-                  </Button>
-                </div>
-
-                {/* Dropdown Hasil Pencarian Alamat Otomatis */}
-                {showAddressDropdown && addressSearchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover text-popover-foreground rounded-xl border border-border shadow-2xl overflow-hidden max-h-72 overflow-y-auto divide-y divide-border">
-                    <div className="p-2.5 bg-muted/80 text-[11px] font-semibold text-muted-foreground px-3.5 flex justify-between items-center sticky top-0 backdrop-blur-md z-10 border-b border-border/60">
-                      <span className="flex items-center gap-1.5 text-foreground font-bold">
-                        <Search className="h-3 w-3 text-primary" /> Pilih Patokan / Lokasi yang Sesuai ({addressSearchResults.length} Ditemukan):
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddressDropdown(false)}
-                        className="text-muted-foreground hover:text-foreground font-bold px-1.5 py-0.5 rounded hover:bg-muted"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    {addressSearchResults.map((res, i) => (
-                      <div
-                        key={i}
-                        onClick={() => selectAddressResult(res)}
-                        className="p-3 text-xs hover:bg-primary/10 hover:text-primary cursor-pointer flex items-start gap-3 transition-colors group"
-                      >
-                        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                          <MapPin className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">
-                              {res.title}
-                            </span>
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background border-border text-muted-foreground">
-                              {res.categoryLabel}
-                            </Badge>
-                          </div>
-                          <div className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
-                            {res.subtitle}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground/70 font-mono pt-0.5 flex items-center gap-2">
-                            <span>📍 {parseFloat(res.lat).toFixed(5)}, {parseFloat(res.lon).toFixed(5)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Actions for GPS */}
-            <div className="flex items-center gap-2 flex-wrap pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs h-8"
-                disabled={attGpsLoading}
-                onClick={handleGetAdminCurrentGps}
-              >
-                <Navigation className={`h-3.5 w-3.5 mr-1.5 text-primary ${attGpsLoading ? "animate-spin" : ""}`} />
-                {attGpsLoading ? "Mendeteksi..." : "Ambil Koordinat Lokasi Saya Saat Ini (GPS)"}
-              </Button>
-              <a
-                href={`https://www.google.com/maps?q=${attMapForm.latitude},${attMapForm.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline px-2 py-1"
-              >
-                Buka di Google Maps ↗
-              </a>
-            </div>
-
-            {/* Interactive Leaflet Map for Direct Manual Pointing and Geofencing */}
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center justify-between flex-wrap gap-1">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-primary" /> Peta Interaktif Titik Absen {selectedAttBranch}:
-                </span>
-                <span className="text-[11px] text-muted-foreground font-mono">
-                  {attMapForm.latitude.toFixed(6)}, {attMapForm.longitude.toFixed(6)} (Radius: {attMapForm.radius_meters}m)
-                </span>
-              </div>
-
-              {/* Komponen Peta Interaktif dengan Klik Langsung & Draggable Marker */}
-              <AttendanceLocationPickerMap
-                latitude={attMapForm.latitude}
-                longitude={attMapForm.longitude}
-                radiusMeters={attMapForm.radius_meters}
-                branchName={selectedAttBranch}
-                address={attMapForm.address}
-                onChangeCoordinates={({ latitude, longitude, address: newAddress }) => {
-                  setAttMapForm((prev) => ({
-                    ...prev,
-                    latitude,
-                    longitude,
-                    ...(newAddress ? { address: newAddress } : {}),
-                  }));
-                }}
-              />
-
-              {/* Kontrol Geser Pin Peta Mikro (Fine-Tuning) */}
-              <div className="flex items-center justify-between flex-wrap gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/80 text-xs">
-                <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
-                  <Compass className="h-3.5 w-3.5 text-primary" /> Geser Titik Peta (±10 meter):
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    title="Geser ke Atas (Utara)"
-                    onClick={() => shiftCoordinate(0.0001, 0)}
-                  >
-                    ⬆️ Atas
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    title="Geser ke Bawah (Selatan)"
-                    onClick={() => shiftCoordinate(-0.0001, 0)}
-                  >
-                    ⬇️ Bawah
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    title="Geser ke Kiri (Barat)"
-                    onClick={() => shiftCoordinate(0, -0.0001)}
-                  >
-                    ⬅️ Kiri
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    title="Geser ke Kanan (Timur)"
-                    onClick={() => shiftCoordinate(0, 0.0001)}
-                  >
-                    ➡️ Kanan
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <Button onClick={handleSaveBranchLocation} disabled={attSaving} className="text-xs font-semibold">
-                {attSaving ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" /> Menyimpan & Sinkronkan...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-1.5" /> Simpan Pengaturan Titik {selectedAttBranch}
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card Riwayat Absensi Kasir (History Absen Table) */}
-        <Card className="border-border/80 shadow-xs">
-          <CardHeader>
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Clock className="h-4 w-4 text-primary" /> Riwayat Absensi Kasir ({filteredHistoryRecords.length})
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs px-2.5"
-                  onClick={handleRefreshAttendanceRecords}
-                >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
-                </Button>
-                {filteredHistoryRecords.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={handleClearAttendanceHistory}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Bersihkan
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3.5">
-            {/* Filter Bar */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Cari kasir / email / cabang..."
-                  value={historySearch}
-                  onChange={(e) => setHistorySearch(e.target.value)}
-                  className="pl-8 h-8 text-xs"
-                />
-              </div>
-
-              <Select value={historyBranchFilter} onValueChange={(v) => setHistoryBranchFilter(v)}>
-                <SelectTrigger className="w-[130px] h-8 text-xs">
-                  <SelectValue placeholder="Cabang" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Cabang</SelectItem>
-                  {availableBranches.map((b) => (
-                    <SelectItem key={b} value={b}>
-                      {b}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={historyDateFilter} onValueChange={(v: any) => setHistoryDateFilter(v)}>
-                <SelectTrigger className="w-[120px] h-8 text-xs">
-                  <SelectValue placeholder="Tanggal" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Waktu</SelectItem>
-                  <SelectItem value="today">Hari Ini</SelectItem>
-                  <SelectItem value="7">7 Hari Terakhir</SelectItem>
-                  <SelectItem value="30">30 Hari Terakhir</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Tabel Riwayat */}
-            <div className="rounded-lg border overflow-hidden">
-              <Table>
-                <TableHeader className="bg-muted/50">
-                  <TableRow>
-                    <TableHead className="text-xs font-semibold">Tanggal</TableHead>
-                    <TableHead className="text-xs font-semibold">Kasir & Cabang</TableHead>
-                    <TableHead className="text-xs font-semibold">Jam Masuk</TableHead>
-                    <TableHead className="text-xs font-semibold">Jam Pulang</TableHead>
-                    <TableHead className="text-xs font-semibold">Istirahat</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Status Shift</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredHistoryRecords.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-6 text-xs text-muted-foreground">
-                        Belum ada riwayat absensi kasir yang tercatat.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredHistoryRecords.map((rec) => {
-                      const totalBreakMin = getTotalBreakMinutes(rec.breaks);
-                      const hasActiveBreak = rec.breaks?.some((b) => !b.end_time);
-
-                      return (
-                        <TableRow key={rec.id} className="text-xs">
-                          {/* Tanggal */}
-                          <TableCell className="font-medium whitespace-nowrap">
-                            <div className="font-semibold text-foreground">
-                              {new Date(rec.clock_in_time).toLocaleDateString("id-ID", {
-                                weekday: "short",
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                              })}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground font-mono">{rec.date}</div>
-                          </TableCell>
-
-                          {/* Kasir & Cabang */}
-                          <TableCell>
-                            <div className="font-semibold text-foreground">{rec.cashier_name}</div>
-                            <div className="text-[11px] text-muted-foreground font-mono">{rec.user_email}</div>
-                            <Badge variant="secondary" className="text-[10px] font-medium mt-1">
-                              <Store className="h-3 w-3 mr-1" /> {rec.branch_name}
-                            </Badge>
-                          </TableCell>
-
-                          {/* Jam Masuk */}
-                          <TableCell className="whitespace-nowrap">
-                            <div className="font-bold text-foreground text-xs flex items-center gap-1">
-                              <Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                              {new Date(rec.clock_in_time).toLocaleTimeString("id-ID", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">
-                              Jarak: <span className="font-medium text-foreground">{rec.distance_meters}m</span>
-                            </div>
-                            {rec.is_within_radius ? (
-                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[9px] px-1 py-0 mt-0.5">
-                                Valid
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-[9px] px-1 py-0 mt-0.5">
-                                Luar Radius
-                              </Badge>
-                            )}
-                          </TableCell>
-
-                          {/* Jam Pulang */}
-                          <TableCell className="whitespace-nowrap">
-                            {rec.clock_out_time ? (
-                              <div>
-                                <div className="font-bold text-foreground text-xs flex items-center gap-1">
-                                  <LogOut className="h-3.5 w-3.5 text-rose-500" />
-                                  {new Date(rec.clock_out_time).toLocaleTimeString("id-ID", {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground mt-0.5">
-                                  Jarak: <span className="font-medium text-foreground">{rec.clock_out_distance_meters ?? 0}m</span>
-                                </div>
-                                {rec.clock_out_is_within_radius ? (
-                                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[9px] px-1 py-0 mt-0.5">
-                                    Valid
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-[9px] px-1 py-0 mt-0.5">
-                                    Luar Radius
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-[10px] font-medium">
-                                <Clock className="h-3 w-3 mr-1 animate-pulse" /> Belum Pulang
-                              </Badge>
-                            )}
-                          </TableCell>
-
-                          {/* Istirahat */}
-                          <TableCell>
-                            {rec.breaks && rec.breaks.length > 0 ? (
-                              <div className="space-y-1">
-                                <div className="font-semibold text-foreground text-xs flex items-center gap-1">
-                                  <Coffee className="h-3 w-3 text-amber-500" />
-                                  {totalBreakMin}m ({rec.breaks.length}x)
-                                </div>
-                                {hasActiveBreak && (
-                                  <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                                    Sedang Istirahat
-                                  </Badge>
-                                )}
-                                <div className="text-[10px] text-muted-foreground space-y-0.5">
-                                  {rec.breaks.map((b, bIdx) => (
-                                    <div key={b.id || bIdx} className="font-mono text-[9px]">
-                                      #{bIdx + 1}: {new Date(b.start_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                                      {b.end_time ? ` - ${new Date(b.end_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} (${b.duration_minutes ?? 0}m)` : " (Aktif)"}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-[11px]">-</span>
-                            )}
-                          </TableCell>
-
-                          {/* Status Shift */}
-                          <TableCell className="text-right whitespace-nowrap">
-                            {rec.clock_out_time ? (
-                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px]">
-                                <CheckCheck className="h-3 w-3 mr-1" /> Selesai Shift
-                              </Badge>
-                            ) : hasActiveBreak ? (
-                              <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-[10px]">
-                                <Coffee className="h-3 w-3 mr-1" /> Istirahat
-                              </Badge>
-                            ) : rec.is_within_radius ? (
-                              <Badge variant="outline" className="bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20 text-[10px]">
-                                <ShieldCheck className="h-3 w-3 mr-1" /> Hadir (Aktif)
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20 text-[10px]">
-                                <AlertTriangle className="h-3 w-3 mr-1" /> Luar Radius
-                              </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
       </TabsContent>
 
       <TabsContent value="event" className="space-y-4">

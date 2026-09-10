@@ -1,10 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, inferBranchFromEmail } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { rupiah } from "@/lib/format";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ export const Route = createFileRoute("/_authenticated/expense-details")({
 });
 
 function ExpenseDetails() {
-  const navigate = useNavigate({ from: Route.fullPath });
+  const navigate = useNavigate();
   const { role: rawRole, user, branchName } = useAuth();
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
@@ -48,8 +48,17 @@ function ExpenseDetails() {
   const [toDate, setToDate] = useState<string>(searchParams.toDate || "");
   const customRange = !!(fromDate && toDate);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"expense" | "restock">(
+    searchParams.type || "expense"
+  );
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  useEffect(() => {
+    if (searchParams.type !== undefined) {
+      setTypeFilter(searchParams.type);
+    }
+  }, [searchParams.type]);
 
   const [selectedBranch, setSelectedBranch] = useState<string>(() => {
     if (searchParams.branch) return searchParams.branch;
@@ -202,24 +211,25 @@ function ExpenseDetails() {
       if (b?.trim()) set.add(b.trim());
     });
     return Array.from(set);
-  }, [branches, userRoles, allEntries, cashierBranchMap]);
+  }, [branches, allEntries, cashierBranchMap]);
 
-  const typeFilter = searchParams.type;
+  const cashierAssignedBranch = useMemo(() => {
+    return (
+      branchName ||
+      (user?.id ? cashierBranchMap[user.id] : null) ||
+      inferBranchFromEmail(user?.email) ||
+      "Cabang 1"
+    );
+  }, [branchName, user?.id, user?.email, cashierBranchMap]);
+
+  const effectiveSelectedBranch = role === "cashier" ? cashierAssignedBranch : selectedBranch;
 
   const filteredEntries = useMemo(() => {
     let result = allEntries;
 
-    // Filter by branch for cashier
-    if (role === "cashier") {
-      const myBranch = branchName || cashierBranchMap[user?.id || ""] || "";
-      result = result.filter((e: any) => {
-        if (user?.id && e.created_by === user.id) return true;
-        const eb = getEntryBranch(e);
-        if (myBranch && eb) return branchMatch(eb, myBranch);
-        return false;
-      });
-    } else if (role === "admin" && selectedBranch !== "all") {
-      result = result.filter((e: any) => branchMatch(getEntryBranch(e), selectedBranch));
+    // Filter by branch
+    if (effectiveSelectedBranch !== "all") {
+      result = result.filter((e: any) => branchMatch(getEntryBranch(e), effectiveSelectedBranch));
     }
 
     if (typeFilter === "restock") {
@@ -375,22 +385,26 @@ function ExpenseDetails() {
             <h1 className="text-xl font-bold">
               {typeFilter === "restock" ? "Detail Restok" : "Detail Pengeluaran"}
             </h1>
-            {role === "admin" && selectedBranch !== "all" && (
+            {role === "cashier" ? (
+              <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
+                <Store className="h-3.5 w-3.5" />
+                Cabang: <span className="font-semibold">{cashierAssignedBranch}</span>
+              </p>
+            ) : selectedBranch !== "all" ? (
               <p className="text-xs text-primary font-medium mt-0.5 flex items-center gap-1">
                 <Store className="h-3.5 w-3.5" />
                 Cabang: <span className="font-semibold">{selectedBranch}</span>
               </p>
-            )}
-            {role === "cashier" && (
+            ) : (
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                <Store className="h-3.5 w-3.5" />
-                Cabang: <span className="font-medium">{branchName || "Cabang Kasir"}</span>
+                <Store className="h-3.5 w-3.5 text-primary" />
+                <span>Semua Cabang</span>
               </p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Branch Filter for Admin */}
+          {/* Branch Filter (Only for Admin) */}
           {role === "admin" && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground whitespace-nowrap">Cabang:</span>
@@ -457,7 +471,7 @@ function ExpenseDetails() {
             <div className="text-xs text-muted-foreground">
               {typeFilter === "restock" ? "Total Restok" : "Total Pengeluaran"}
             </div>
-            <div className="text-2xl font-bold text-destructive">{role === "cashier" ? "XXXXX" : rupiah(totalExpense)}</div>
+            <div className="text-2xl font-bold text-destructive">{rupiah(totalExpense)}</div>
           </div>
           <div className="text-right text-xs text-muted-foreground">
             {filteredEntries.length} {typeFilter === "restock" ? "restok" : "pengeluaran"}
