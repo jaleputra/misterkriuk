@@ -72,9 +72,10 @@ function SoldProductsDetail() {
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        const { data, error } = await supabase.from("branches").select("id, shop_name, branch_name, shop_address, shop_phone, whatsapp_number").order("created_at", { ascending: true });
         if (error) {
           const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
           return localData ? JSON.parse(localData) : [];
@@ -89,6 +90,7 @@ function SoldProductsDetail() {
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
       return data ?? [];
@@ -166,6 +168,7 @@ function SoldProductsDetail() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["sold-products-detail", dateFilter, fromDate, toDate],
+    staleTime: 3 * 60 * 1000,
     queryFn: async () => {
       let since: Date;
       let until: Date | null = null;
@@ -185,7 +188,7 @@ function SoldProductsDetail() {
 
       let txQ = supabase
         .from("transactions")
-        .select("*")
+        .select("id, branch_name, buyer_name, house_block, partner_name, sale_category, payment_method, total, discount_amount, cash_received, change_amount, cashier_id, created_at")
         .gte("created_at", since.toISOString())
         .order("created_at", { ascending: false })
         .range(0, 9999);
@@ -193,7 +196,7 @@ function SoldProductsDetail() {
 
       const [txRes, productsRes] = await Promise.all([
         txQ,
-        supabase.from("products").select("*"),
+        supabase.from("products").select("id, name, price, stock, category"),
       ]);
 
       if (txRes.error) console.error("sold-products tx query error:", txRes.error);
@@ -214,7 +217,7 @@ function SoldProductsDetail() {
           chunks.map((chunk) =>
             supabase
               .from("transaction_items")
-              .select("*")
+              .select("id, transaction_id, product_id, product_name, price, cost_price, quantity, subtotal")
               .in("transaction_id", chunk)
               .range(0, 19999)
           )
@@ -235,7 +238,6 @@ function SoldProductsDetail() {
         products: productsRes.data ?? [],
       };
     },
-    refetchInterval: 30000,
   });
 
   const allTransactions = data?.transactions ?? [];

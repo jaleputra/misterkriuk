@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { inferRoleFromEmail, inferBranchFromEmail } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,16 +9,37 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from "lucide-react";
-function resolvePostLoginDestination(): string {
+
+function resolvePostLoginDestination(user?: { email?: string | null } | null): string {
+  if (!user || !user.email) return "/transaction";
+  const normalized = user.email.trim().toLowerCase();
+  if (normalized === "jaleputra69@gmail.com") return "/dashboard";
+  if (normalized.includes("kasir")) return "/transaction";
   return "/transaction";
+}
+
+function handleLoginSuccess(user: any) {
+  if (!user) return;
+  const dest = resolvePostLoginDestination(user);
+  if (typeof window !== "undefined" && user.id) {
+    const role = inferRoleFromEmail(user.email);
+    const branch = inferBranchFromEmail(user.email);
+    localStorage.setItem(`app_user_role_${user.id}`, role);
+    if (branch) localStorage.setItem(`app_user_branch_${user.id}`, branch);
+    window.location.href = dest;
+  }
 }
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
   beforeLoad: async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session?.user) {
-      throw redirect({ to: resolvePostLoginDestination() });
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        throw redirect({ to: resolvePostLoginDestination(data.session.user) });
+      }
+    } catch (e) {
+      if ((e as any)?.to) throw e;
     }
   },
   component: AuthPage,
@@ -30,40 +52,49 @@ function AuthPage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
-      if (s?.user) {
-        navigate({ to: resolvePostLoginDestination(), replace: true });
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, s) => {
+      if (s?.user && (event === "SIGNED_IN" || event === "USER_UPDATED")) {
+        handleLoginSuccess(s.user);
       }
     });
     return () => sub.subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setAuthError(null);
     try {
+      const cleanEmail = email.trim();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: cleanEmail,
         password,
       });
       if (error) {
-        if (error.message.toLowerCase().includes("invalid login credentials")) {
-          toast.error("Email atau password salah. Jika belum terdaftar, silakan buat akun di tab 'Daftar'.");
-        } else if (error.message.toLowerCase().includes("email not confirmed")) {
-          toast.error("Email belum dikonfirmasi. Harap matikan 'Confirm Email' di dashboard Supabase.");
-        } else {
-          toast.error(error.message);
+        const msg = (error.message || "").toLowerCase();
+        let displayError = error.message;
+        if (msg.includes("invalid login credentials")) {
+          displayError = "Email atau password salah. Jika belum terdaftar, silakan buat akun di tab 'Daftar'.";
+        } else if (msg.includes("email not confirmed")) {
+          displayError = "Email belum dikonfirmasi. Harap matikan 'Confirm Email' di dashboard Supabase.";
+        } else if (msg.includes("exceed_egress_quota") || msg.includes("restricted") || (error as any).status === 402) {
+          displayError = "Layanan Supabase Dibatasi (Error 402: Exceed Egress Quota). Kuota bandwidth gratis project Supabase telah habis. Harap buka dashboard Supabase untuk mengaktifkan kembali layanan.";
         }
+        setAuthError(displayError);
+        toast.error(displayError, { duration: 8000 });
         return;
       }
-      if (data?.session) {
-        toast.success("Login berhasil! Membuka kasir...");
-        navigate({ to: resolvePostLoginDestination(), replace: true });
+      if (data?.session?.user) {
+        toast.success("Login berhasil! Membuka aplikasi...");
+        handleLoginSuccess(data.session.user);
       }
     } catch (err: any) {
-      toast.error(err?.message || "Gagal melakukan login");
+      const errText = err?.message || "Gagal melakukan login";
+      setAuthError(errText);
+      toast.error(errText);
     } finally {
       setLoading(false);
     }
@@ -72,42 +103,48 @@ function AuthPage() {
   const onSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setAuthError(null);
     try {
+      const cleanEmail = email.trim();
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: cleanEmail,
         password,
         options: { emailRedirectTo: window.location.origin, data: { name: name.trim() } },
       });
       if (error) {
-        if (error.message.toLowerCase().includes("disabled") || (error as any).code === "email_provider_disabled") {
-          toast.error("Email Provider dinonaktifkan di Supabase. Aktifkan kembali switch 'Enable Email provider' di Authentication > Providers > Email.");
-        } else if (error.message.toLowerCase().includes("rate limit")) {
-          toast.error("Limit email Supabase tercapai. Harap nonaktifkan hanya 'Confirm email' di Dashboard Supabase.");
-        } else {
-          toast.error(error.message);
+        const msg = (error.message || "").toLowerCase();
+        let displayError = error.message;
+        if (msg.includes("disabled") || (error as any).code === "email_provider_disabled") {
+          displayError = "Email Provider dinonaktifkan di Supabase. Aktifkan kembali switch 'Enable Email provider' di Authentication > Providers > Email.";
+        } else if (msg.includes("rate limit")) {
+          displayError = "Limit email Supabase tercapai. Harap nonaktifkan hanya 'Confirm email' di Dashboard Supabase.";
+        } else if (msg.includes("exceed_egress_quota") || msg.includes("restricted") || (error as any).status === 402) {
+          displayError = "Layanan Supabase Dibatasi (Error 402: Exceed Egress Quota). Kuota bandwidth gratis project Supabase telah habis. Harap buka dashboard Supabase untuk mengaktifkan kembali layanan.";
         }
+        setAuthError(displayError);
+        toast.error(displayError, { duration: 8000 });
         return;
       }
-      if (data?.session) {
-        const dest = await resolvePostLoginDestination(data.session.user);
+      if (data?.session?.user) {
         toast.success("Pendaftaran berhasil! Membuka aplikasi...");
-        navigate({ to: dest, replace: true });
+        handleLoginSuccess(data.session.user);
       } else if (data?.user) {
         // Coba langsung login jika email confirmation sudah dimatikan
         const { data: signInData } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+          email: cleanEmail,
           password,
         });
-        if (signInData?.session) {
-          const dest = resolvePostLoginDestination();
+        if (signInData?.session?.user) {
           toast.success("Pendaftaran & Login berhasil! Membuka aplikasi...");
-          navigate({ to: dest, replace: true });
+          handleLoginSuccess(signInData.session.user);
         } else {
           toast.info("Akun berhasil dibuat. Silakan login pada tab Masuk.");
         }
       }
     } catch (err: any) {
-      toast.error(err?.message || "Gagal melakukan pendaftaran");
+      const errText = err?.message || "Gagal melakukan pendaftaran";
+      setAuthError(errText);
+      toast.error(errText);
     } finally {
       setLoading(false);
     }
@@ -160,6 +197,13 @@ function AuthPage() {
               </p>
             </CardHeader>
             <CardContent className="px-6 pb-6 pt-2">
+              {authError && (
+                <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/30 p-3 text-destructive animate-in fade-in">
+                  <p className="text-xs font-semibold leading-relaxed">
+                    ⚠️ {authError}
+                  </p>
+                </div>
+              )}
               <Tabs defaultValue="signin" className="w-full">
                 <TabsList className="grid grid-cols-2 mb-5">
                   <TabsTrigger value="signin">

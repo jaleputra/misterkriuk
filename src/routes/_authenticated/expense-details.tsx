@@ -83,9 +83,10 @@ function ExpenseDetails() {
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        const { data, error } = await supabase.from("branches").select("id, shop_name, branch_name, shop_address, shop_phone, whatsapp_number").order("created_at", { ascending: true });
         if (error) {
           const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
           return localData ? JSON.parse(localData) : [];
@@ -100,6 +101,7 @@ function ExpenseDetails() {
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
       return data ?? [];
@@ -129,6 +131,7 @@ function ExpenseDetails() {
 
   const { data } = useQuery({
     queryKey: ["expense-details", dateFilter, fromDate, toDate],
+    staleTime: 3 * 60 * 1000,
     queryFn: async () => {
       let sinceDateStr: string;
       let untilDateStr: string | null = null;
@@ -147,7 +150,7 @@ function ExpenseDetails() {
         sinceDateStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
       }
 
-      let q = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr);
+      let q = supabase.from("stock_entries").select("id, branch_name, restock_date, shipping_cost, entry_type, payment_method, created_at, created_by").gte("restock_date", sinceDateStr);
       if (untilDateStr) q = q.lte("restock_date", untilDateStr);
       const { data: entriesData } = await q.order("restock_date", { ascending: false });
 
@@ -167,7 +170,7 @@ function ExpenseDetails() {
           chunks.map((chunk) =>
             supabase
               .from("stock_movements")
-              .select("*, products(name)")
+              .select("id, stock_entry_id, product_id, quantity, initial_price, shipping_cost, created_at, products(name)")
               .in("stock_entry_id", chunk)
           )
         );
@@ -182,7 +185,7 @@ function ExpenseDetails() {
       }
 
       const [prodsRes] = await Promise.all([
-        supabase.from("products").select("*"),
+        supabase.from("products").select("id, name, price, stock, category"),
       ]);
 
       return {
@@ -191,7 +194,6 @@ function ExpenseDetails() {
         products: prodsRes.data ?? [],
       };
     },
-    refetchInterval: 30000,
   });
 
   const allEntries = data?.entries ?? [];

@@ -99,6 +99,7 @@ function SettingsPage() {
   // Multi-branch storage in Supabase with local fallback
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
         const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
@@ -268,6 +269,7 @@ function SettingsPage() {
   // Printer & QRIS settings
   const { data: settings } = useQuery({
     queryKey: ["printer_settings"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
 

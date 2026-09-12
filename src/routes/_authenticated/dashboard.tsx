@@ -137,9 +137,10 @@ function Dashboard() {
   // Query branches from database / fallback
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        const { data, error } = await supabase.from("branches").select("id, shop_name, branch_name, shop_address, shop_phone, whatsapp_number").order("created_at", { ascending: true });
         if (error) {
           const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
           return localData ? JSON.parse(localData) : [];
@@ -155,6 +156,7 @@ function Dashboard() {
   // Query user roles to map cashier user_id to branch_name
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
       return data ?? [];
@@ -163,6 +165,7 @@ function Dashboard() {
 
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles_for_transactions_dashboard"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("id, email, name");
       return data ?? [];
@@ -212,6 +215,7 @@ function Dashboard() {
 
   const { data } = useQuery({
     queryKey: ["dashboard", dateFilter, fromDate, toDate],
+    staleTime: 3 * 60 * 1000,
     queryFn: async () => {
       let since: Date;
       let until: Date | null = null;
@@ -252,7 +256,7 @@ function Dashboard() {
       const txs = await fetchAllRows<any>((from, to) => {
         let q = supabase
           .from("transactions")
-          .select("*")
+          .select("id, branch_name, buyer_name, house_block, partner_name, sale_category, payment_method, total, discount_amount, cash_received, change_amount, cashier_id, created_at")
           .gte("created_at", fetchSince.toISOString())
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -262,16 +266,16 @@ function Dashboard() {
 
       const [stockEntries, products, stockMovements, allRestockEntries] = await Promise.all([
         fetchAllRows<any>((from, to) => {
-          let q = supabase.from("stock_entries").select("*").gte("restock_date", sinceDateStr).range(from, to);
+          let q = supabase.from("stock_entries").select("id, branch_name, restock_date, shipping_cost, entry_type, payment_method, created_at, created_by").gte("restock_date", sinceDateStr).range(from, to);
           if (untilDateStr) q = q.lte("restock_date", untilDateStr);
           return q;
         }),
-        fetchAllRows<any>((from, to) => supabase.from("products").select("*").range(from, to)),
-        fetchAllRows<any>((from, to) => supabase.from("stock_movements").select("*, products(name)").range(from, to)),
+        fetchAllRows<any>((from, to) => supabase.from("products").select("id, name, price, stock, category").range(from, to)),
+        fetchAllRows<any>((from, to) => supabase.from("stock_movements").select("id, product_id, quantity, initial_price, shipping_cost, created_at, products(name)").range(from, to)),
         fetchAllRows<any>((from, to) =>
           supabase
             .from("stock_entries")
-            .select("*, stock_movements(quantity, initial_price)")
+            .select("id, restock_date, shipping_cost, entry_type, payment_method, stock_movements(quantity, initial_price)")
             .eq("entry_type", "restock")
             .range(from, to),
         ),
@@ -280,7 +284,7 @@ function Dashboard() {
       const txIds = txs.map((t) => t.id);
       const itemsData = txIds.length
         ? await fetchAllByIds<any>(txIds, (chunk, from, to) =>
-            supabase.from("transaction_items").select("*").in("transaction_id", chunk).range(from, to),
+            supabase.from("transaction_items").select("id, transaction_id, product_id, product_name, price, cost_price, quantity, subtotal").in("transaction_id", chunk).range(from, to),
           )
         : [];
 
@@ -293,7 +297,6 @@ function Dashboard() {
         allRestockEntries: allRestockEntries ?? [],
       };
     },
-    refetchInterval: 30000,
   });
 
   const branchOptions = useMemo(() => {
@@ -412,6 +415,7 @@ function Dashboard() {
 
   const { data: settings } = useQuery({
     queryKey: ["printer_settings"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
 

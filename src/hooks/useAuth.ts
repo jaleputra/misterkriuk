@@ -154,6 +154,13 @@ function initAuth() {
   if (initialized) return;
   initialized = true;
 
+  // Safety timer to prevent any stuck loading spinner
+  setTimeout(() => {
+    if (currentState.loading) {
+      setAuthState({ loading: false });
+    }
+  }, 1500);
+
   supabase.auth.getSession().then(({ data }) => {
     const session = data?.session ?? null;
     const user = session?.user ?? null;
@@ -167,12 +174,14 @@ function initAuth() {
         user,
         role: fallbackRole,
         branchName: fallbackBranch,
-        loading: !cachedRole,
+        loading: false,
       });
       loadRoleForUser(user);
     } else {
       setAuthState({ session: null, user: null, role: null, branchName: null, loading: false });
     }
+  }).catch(() => {
+    setAuthState({ loading: false });
   });
 
   supabase.auth.onAuthStateChange((_event, session) => {

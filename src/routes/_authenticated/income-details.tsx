@@ -118,9 +118,10 @@ function IncomeDetails() {
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        const { data, error } = await supabase.from("branches").select("id, shop_name, branch_name, shop_address, shop_phone, whatsapp_number").order("created_at", { ascending: true });
         if (error) {
           const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
           return localData ? JSON.parse(localData) : [];
@@ -135,6 +136,7 @@ function IncomeDetails() {
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
       return data ?? [];
@@ -143,6 +145,7 @@ function IncomeDetails() {
 
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles_for_transactions"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("id, email, name");
       return data ?? [];
@@ -223,6 +226,7 @@ function IncomeDetails() {
 
   const { data } = useQuery({
     queryKey: ["income-details", dateFilter, fromDate, toDate],
+    staleTime: 3 * 60 * 1000,
     queryFn: async () => {
       let sinceIso: string;
       let untilIso: string | null = null;
@@ -244,7 +248,7 @@ function IncomeDetails() {
       const txs = await fetchAllRows<any>((from, to) => {
         let q = supabase
           .from("transactions")
-          .select("*")
+          .select("id, branch_name, buyer_name, house_block, partner_name, sale_category, payment_method, total, discount_amount, cash_received, change_amount, cashier_id, created_at")
           .gte("created_at", sinceIso)
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -253,14 +257,14 @@ function IncomeDetails() {
       });
 
       const productsData = await fetchAllRows<any>((from, to) =>
-        supabase.from("products").select("*").order("name").range(from, to),
+        supabase.from("products").select("id, name, price, stock, category").order("name").range(from, to),
       );
 
       const txIds = txs.map((t) => t.id);
 
       const itemsData = txIds.length
         ? await fetchAllByIds<any>(txIds, (chunk, from, to) =>
-            supabase.from("transaction_items").select("*").in("transaction_id", chunk).range(from, to),
+            supabase.from("transaction_items").select("id, transaction_id, product_id, product_name, price, cost_price, quantity, subtotal").in("transaction_id", chunk).range(from, to),
           )
         : [];
 
@@ -270,12 +274,11 @@ function IncomeDetails() {
         products: productsData,
       };
     },
-
-    refetchInterval: 30000,
   });
 
   const { data: settings } = useQuery({
     queryKey: ["printer_settings"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
 

@@ -10,15 +10,22 @@ export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
     let currentUser: any = null;
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (sessionData?.session?.user) {
-      currentUser = sessionData.session.user;
-    } else {
-      const { data: userData, error } = await supabase.auth.getUser();
-      if (error || !userData?.user) {
-        throw redirect({ to: "/auth" });
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        currentUser = sessionData.session.user;
+      } else {
+        const { data: userData, error } = await supabase.auth.getUser();
+        if (!error && userData?.user) {
+          currentUser = userData.user;
+        }
       }
-      currentUser = userData.user;
+    } catch {
+      // Ignored
+    }
+
+    if (!currentUser) {
+      throw redirect({ to: "/auth" });
     }
 
     return { user: currentUser };

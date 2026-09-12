@@ -49,9 +49,10 @@ function WarehousePage() {
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
+        const { data, error } = await supabase.from("branches").select("id, shop_name, branch_name, shop_address, shop_phone, whatsapp_number").order("created_at", { ascending: true });
         if (error) {
           const localData = typeof window !== "undefined" ? localStorage.getItem("app_branches_data") : null;
           return localData ? JSON.parse(localData) : [];
@@ -66,11 +67,13 @@ function WarehousePage() {
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
-    queryFn: async () => (await supabase.from("products").select("*").order("name")).data ?? [],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => (await supabase.from("products").select("id, name, price, stock, category").order("name")).data ?? [],
   });
 
   const { data: entries = [] } = useQuery({
     queryKey: ["stock_entries", dateFilter, fromDate, toDate],
+    staleTime: 3 * 60 * 1000,
     queryFn: async () => {
       let sinceDateStr: string | null = null;
       let untilDateStr: string | null = null;
@@ -92,7 +95,7 @@ function WarehousePage() {
       return await fetchAllRows<any>((from, to) => {
         let q = supabase
           .from("stock_entries")
-          .select("*, stock_movements(*, products(name))")
+          .select("id, branch_name, restock_date, shipping_cost, entry_type, payment_method, created_at, created_by, stock_movements(id, stock_entry_id, product_id, quantity, initial_price, shipping_cost, created_at, products(name))")
           .order("restock_date", { ascending: false })
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -105,6 +108,7 @@ function WarehousePage() {
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
       return data ?? [];

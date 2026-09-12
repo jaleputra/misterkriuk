@@ -20,6 +20,7 @@ function MenuPage() {
   const qc = useQueryClient();
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => (await supabase.from("products").select("*").order("name")).data ?? [],
   });
 

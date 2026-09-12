@@ -116,11 +116,12 @@ function ReportsPage() {
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
         const { data, error } = await supabase
           .from("branches")
-          .select("*")
+          .select("id, shop_name, branch_name, shop_address, shop_phone, whatsapp_number")
           .order("created_at", { ascending: true });
         if (error) {
           const localData =
@@ -138,6 +139,7 @@ function ReportsPage() {
 
   const { data: userRoles = [] } = useQuery({
     queryKey: ["user_roles_branch_map"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("user_roles").select("user_id, role, branch_name");
       return data ?? [];
@@ -196,6 +198,7 @@ function ReportsPage() {
 
   const { data: dailyReports = [] } = useQuery({
     queryKey: ["daily_reports", date],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const localKey = `app_daily_reports_${date}`;
       let localList: any[] = [];
@@ -207,7 +210,7 @@ function ReportsPage() {
       try {
         const { data, error } = await supabase
           .from("daily_reports")
-          .select("*")
+          .select("id, report_date, branch_name, initial_cash, note, created_by, created_at")
           .eq("report_date", date);
 
         if (error) {
@@ -242,12 +245,13 @@ function ReportsPage() {
 
   const { data: txs = [] } = useQuery({
     queryKey: ["reports_txs", date],
+    staleTime: 3 * 60 * 1000,
     queryFn: async () => {
       try {
         return await fetchAllRows<any>((from, to) =>
           supabase
             .from("transactions")
-            .select("*")
+            .select("id, branch_name, buyer_name, house_block, partner_name, sale_category, payment_method, total, discount_amount, cash_received, change_amount, cashier_id, created_at")
             .gte("created_at", dayStart)
             .lte("created_at", dayEnd)
             .order("created_at", { ascending: false })
@@ -256,7 +260,7 @@ function ReportsPage() {
       } catch {
         const { data } = await supabase
           .from("transactions")
-          .select("*")
+          .select("id, branch_name, buyer_name, house_block, partner_name, sale_category, payment_method, total, discount_amount, cash_received, change_amount, cashier_id, created_at")
           .gte("created_at", dayStart)
           .lte("created_at", dayEnd);
         return data ?? [];
@@ -270,12 +274,13 @@ function ReportsPage() {
 
   const { data: entries = [] } = useQuery({
     queryKey: ["reports_entries", minDate, maxDate, isDateRange],
+    staleTime: 3 * 60 * 1000,
     queryFn: async () => {
       try {
         return await fetchAllRows<any>((from, to) => {
           let q = supabase
             .from("stock_entries")
-            .select("*, stock_movements(quantity, initial_price, products(name))")
+            .select("id, branch_name, restock_date, shipping_cost, entry_type, payment_method, created_at, created_by, stock_movements(id, quantity, initial_price, products(name))")
             .order("created_at", { ascending: false })
             .range(from, to);
           if (isDateRange) {

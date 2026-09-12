@@ -73,6 +73,7 @@ function TransactionPage() {
   const today = new Date().toISOString().slice(0, 10);
   const { data: rawProducts = [] } = useQuery({
     queryKey: ["products"],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from("products").select("*").order("name");
       return (data ?? []) as Product[];
@@ -80,6 +81,7 @@ function TransactionPage() {
   });
   const { data: stockCosts = [] } = useQuery({
     queryKey: ["latest_stock_costs"],
+    staleTime: 10 * 60 * 1000,
     queryFn: async () =>
       (
         await supabase
@@ -90,11 +92,13 @@ function TransactionPage() {
   });
   const { data: settings } = useQuery({
     queryKey: ["printer_settings"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () =>
       (await supabase.from("printer_settings").select("*").eq("id", 1).maybeSingle()).data,
   });
   const { data: activeEvent } = useQuery({
     queryKey: ["events_today", today],
+    staleTime: 10 * 60 * 1000,
     queryFn: async () =>
       (
         await supabase
@@ -108,6 +112,7 @@ function TransactionPage() {
   });
   const { data: eventItems = [] } = useQuery({
     queryKey: ["event_items_today", activeEvent?.id],
+    staleTime: 10 * 60 * 1000,
     enabled: !!activeEvent?.id,
     queryFn: async () => {
       if (!activeEvent?.id) return [];

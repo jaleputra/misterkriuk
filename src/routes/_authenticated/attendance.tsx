@@ -54,6 +54,7 @@ function CashierAttendancePage() {
   // Fetch branches from Supabase or fallback
   const { data: dbBranches = [] } = useQuery({
     queryKey: ["branches"],
+    staleTime: 15 * 60 * 1000,
     queryFn: async () => {
       try {
         const { data, error } = await supabase.from("branches").select("*").order("created_at", { ascending: true });
