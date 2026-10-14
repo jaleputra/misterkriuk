@@ -40,7 +40,7 @@ const getCategoryDisplayName = (cat: string) => {
 };
 
 function SoldProductsDetail() {
-  const navigate = useNavigate();
+  const navigate = Route.useNavigate();
   const { role: rawRole, user, branchName } = useAuth();
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
@@ -188,7 +188,7 @@ function SoldProductsDetail() {
 
       let txQ = supabase
         .from("transactions")
-        .select("id, branch_name, buyer_name, house_block, partner_name, sale_category, payment_method, total, discount_amount, cash_received, change_amount, cashier_id, created_at")
+        .select("id, branch_name, buyer_name, house_block, partner_name, sale_category, payment_method, total, cash_received, change_amount, cashier_id, created_at")
         .gte("created_at", since.toISOString())
         .order("created_at", { ascending: false })
         .range(0, 9999);

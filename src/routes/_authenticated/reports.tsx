@@ -54,7 +54,7 @@ export const Route = createFileRoute("/_authenticated/reports")({
 
 function ReportsPage() {
   const { role: rawRole, branchName, loading, user } = useAuth();
-  const navigate = useNavigate();
+  const navigate = Route.useNavigate();
   const searchParams = Route.useSearch();
   const qc = useQueryClient();
 

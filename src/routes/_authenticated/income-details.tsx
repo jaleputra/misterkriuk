@@ -63,12 +63,13 @@ export const Route = createFileRoute("/_authenticated/income-details")({
 });
 
 function IncomeDetails() {
-  const navigate = useNavigate();
+  const navigate = Route.useNavigate();
   const { role: rawRole, user, branchName } = useAuth();
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
     ? "cashier"
     : rawRole || (user?.email?.toLowerCase().trim() === "jaleputra69@gmail.com" ? "admin" : "cashier");
+  const isAdmin = role === "admin";
   const searchParams = Route.useSearch();
   const [dateFilter, setDateFilter] = useState<"today" | "7" | "14" | "30" | "month" | "all">(
     searchParams.dateFilter || "14"
@@ -421,10 +422,27 @@ function IncomeDetails() {
   const saveEdit = useMutation({
     mutationFn: async () => {
       if (!selectedTxId || !selectedTx) return;
-      if (editItems.length === 0) throw new Error("Minimal harus ada 1 produk");
-      const totalAmt = currentTotal;
       const isCash = editForm.payment_method === "cash";
       const cashVal = Number(editForm.cash_received) || 0;
+
+      // Kasir hanya bisa mengubah metode pembayaran
+      if (!isAdmin) {
+        if (isCash && cashVal < selectedTx.total) throw new Error("Uang tunai kurang");
+        const changeAmt = isCash ? Math.max(0, cashVal - selectedTx.total) : null;
+        const { error: txErr } = await supabase
+          .from("transactions")
+          .update({
+            payment_method: editForm.payment_method,
+            cash_received: isCash ? cashVal : null,
+            change_amount: changeAmt,
+          })
+          .eq("id", selectedTxId);
+        if (txErr) throw txErr;
+        return;
+      }
+
+      if (editItems.length === 0) throw new Error("Minimal harus ada 1 produk");
+      const totalAmt = currentTotal;
       if (isCash && cashVal < totalAmt) throw new Error("Uang tunai kurang");
       const changeAmt = isCash ? Math.max(0, cashVal - totalAmt) : null;
 
@@ -498,6 +516,9 @@ function IncomeDetails() {
 
   const deleteTx = useMutation({
     mutationFn: async (txId: string) => {
+      if (!isAdmin) {
+        throw new Error("Hanya admin yang memiliki izin untuk menghapus transaksi.");
+      }
       const txItems = items.filter((i) => i.transaction_id === txId);
       for (const item of txItems) {
         if (item.product_id) {
@@ -845,7 +866,12 @@ function IncomeDetails() {
 
               <div className="space-y-4">
                 <div className="space-y-2 border rounded-lg p-3 bg-card">
-                  <h3 className="font-semibold text-sm">Edit Pesanan</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-sm">{isAdmin ? "Edit Pesanan" : "Daftar Pesanan"}</h3>
+                    {!isAdmin && (
+                      <span className="text-[10px] text-muted-foreground">Hanya baca</span>
+                    )}
+                  </div>
                   <div className="space-y-1.5 max-h-56 overflow-y-auto">
                     {editItems.map((it, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-xs border-b pb-1.5">
@@ -853,18 +879,29 @@ function IncomeDetails() {
                           <div className="font-medium truncate">{it.product_name}</div>
                           <div className="text-muted-foreground">{rupiah(Number(it.price))} × {it.quantity}</div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => updateQty(idx, -1)}>
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="w-6 text-center font-semibold">{it.quantity}</span>
-                          <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => updateQty(idx, 1)}>
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => removeItem(idx)}>
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
+                        {isAdmin ? (
+                          <div className="flex items-center gap-1">
+                            <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => updateQty(idx, -1)}>
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="w-6 text-center font-semibold">{it.quantity}</span>
+                            <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => updateQty(idx, 1)}>
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => removeItem(idx)}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-right">
+                            <span className="font-semibold px-2 py-0.5 rounded bg-muted text-[11px] border">
+                              {it.quantity} pcs
+                            </span>
+                            <div className="text-[11px] font-semibold text-foreground/80 mt-0.5">
+                              {rupiah(Number(it.price) * Number(it.quantity))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                     {editItems.length === 0 && (
@@ -879,7 +916,7 @@ function IncomeDetails() {
 
                 <div className="space-y-3 border rounded-lg p-3 bg-card">
                   <div className="flex items-center justify-between border-b pb-2">
-                    <h3 className="font-semibold text-sm">Data Transaksi</h3>
+                    <h3 className="font-semibold text-sm">{isAdmin ? "Data Transaksi" : "Ubah Metode Pembayaran"}</h3>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-[11px] font-medium text-foreground/85 border">
                       <User className="h-3 w-3 text-muted-foreground" />
                       Akun: <strong className="text-primary">{getCashierAccountDisplay(selectedTx.cashier_id)}</strong>
@@ -920,31 +957,35 @@ function IncomeDetails() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1.5">
-                      <Label>Nama Pembeli</Label>
-                      <Input
-                        value={editForm.buyer_name}
-                        onChange={(e) => setEditForm({ ...editForm, buyer_name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Blok Rumah</Label>
-                      <Input
-                        value={editForm.house_block}
-                        onChange={(e) => setEditForm({ ...editForm, house_block: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                  {isAdmin && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1.5">
+                          <Label>Nama Pembeli</Label>
+                          <Input
+                            value={editForm.buyer_name}
+                            onChange={(e) => setEditForm({ ...editForm, buyer_name: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Blok Rumah</Label>
+                          <Input
+                            value={editForm.house_block}
+                            onChange={(e) => setEditForm({ ...editForm, house_block: e.target.value })}
+                          />
+                        </div>
+                      </div>
 
-                  {selectedTx.sale_category === "partner" && (
-                    <div className="space-y-1.5">
-                      <Label>Nama Partner</Label>
-                      <Input
-                        value={editForm.partner_name}
-                        onChange={(e) => setEditForm({ ...editForm, partner_name: e.target.value })}
-                      />
-                    </div>
+                      {selectedTx.sale_category === "partner" && (
+                        <div className="space-y-1.5">
+                          <Label>Nama Partner</Label>
+                          <Input
+                            value={editForm.partner_name}
+                            onChange={(e) => setEditForm({ ...editForm, partner_name: e.target.value })}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <Button
@@ -966,19 +1007,21 @@ function IncomeDetails() {
                       <Share2 className="h-4 w-4 mr-1.5" /> Bagikan
                     </Button>
                   </div>
-                  <Button
-                    variant="destructive"
-                    className="w-full"
-                    size="sm"
-                    disabled={deleteTx.isPending}
-                    onClick={() => {
-                      if (confirm("Hapus transaksi ini? Stok akan dikembalikan.")) {
-                        deleteTx.mutate(selectedTx.id);
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-1.5" /> Hapus Transaksi
-                  </Button>
+                  {isAdmin && (
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      size="sm"
+                      disabled={deleteTx.isPending}
+                      onClick={() => {
+                        if (confirm("Hapus transaksi ini? Stok akan dikembalikan.")) {
+                          deleteTx.mutate(selectedTx.id);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1.5" /> Hapus Transaksi
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

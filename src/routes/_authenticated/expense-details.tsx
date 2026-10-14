@@ -34,7 +34,7 @@ export const Route = createFileRoute("/_authenticated/expense-details")({
 });
 
 function ExpenseDetails() {
-  const navigate = useNavigate();
+  const navigate = Route.useNavigate();
   const { role: rawRole, user, branchName } = useAuth();
   const isExplicitKasir = user?.email?.toLowerCase().trim() === "kasir@gmail.com" || user?.email?.toLowerCase().includes("kasir");
   const role: "admin" | "cashier" = isExplicitKasir
