@@ -50,9 +50,17 @@ function setAuthState(partial: Partial<AuthState>) {
 }
 
 let initialized = false;
+let lastLoadedUserId: string | null = null;
+let lastLoadedAt = 0;
 
-async function loadRoleForUser(user: User) {
+async function loadRoleForUser(user: User, force = false) {
   const uid = user.id;
+  const now = Date.now();
+  if (!force && lastLoadedUserId === uid && now - lastLoadedAt < 5 * 60 * 1000) {
+    return;
+  }
+  lastLoadedUserId = uid;
+  lastLoadedAt = now;
   const email = user.email || "";
   const inferredRole = inferRoleFromEmail(email);
   const isKasirEmail = email.toLowerCase().trim() === "kasir@gmail.com" || email.toLowerCase().includes("kasir");
@@ -145,9 +153,62 @@ async function loadRoleForUser(user: User) {
 
 export function refreshAuthRole() {
   if (currentState.user) {
-    return loadRoleForUser(currentState.user);
+    return loadRoleForUser(currentState.user, true);
   }
   return Promise.resolve();
+}
+
+export async function signOutUser() {
+  const prevUid = currentState.user?.id;
+  lastLoadedUserId = null;
+  lastLoadedAt = 0;
+  setAuthState({
+    session: null,
+    user: null,
+    role: null,
+    branchName: null,
+    loading: false,
+  });
+
+  try {
+    await Promise.race([
+      supabase.auth.signOut({ scope: "local" }),
+      new Promise((resolve) => setTimeout(resolve, 800)),
+    ]);
+  } catch {
+    // ignore local signOut error
+  }
+
+  try {
+    supabase.auth.signOut().catch(() => {});
+  } catch {
+    // ignore remote signOut error
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      if (prevUid) {
+        localStorage.removeItem(`app_user_role_${prevUid}`);
+        localStorage.removeItem(`app_user_branch_${prevUid}`);
+      }
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (
+          key &&
+          ((key.startsWith("sb-") && key.includes("-auth-token")) ||
+            key.startsWith("supabase.auth.token") ||
+            key.startsWith("app_user_role_") ||
+            key.startsWith("app_user_branch_"))
+        ) {
+          localStorage.removeItem(key);
+        }
+      }
+      sessionStorage.clear();
+    } catch {
+      // ignore storage errors
+    }
+    window.location.replace("/auth");
+  }
 }
 
 function initAuth() {
@@ -200,6 +261,8 @@ function initAuth() {
       });
       loadRoleForUser(user);
     } else {
+      lastLoadedUserId = null;
+      lastLoadedAt = 0;
       setAuthState({ session: null, user: null, role: null, branchName: null, loading: false });
     }
   });

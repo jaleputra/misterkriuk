@@ -73,21 +73,27 @@ function TransactionPage() {
   const today = new Date().toISOString().slice(0, 10);
   const { data: rawProducts = [] } = useQuery({
     queryKey: ["products"],
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
     queryFn: async () => {
-      const { data } = await supabase.from("products").select("*").order("name");
+      const { data } = await supabase
+        .from("products")
+        .select("*")
+        .not("category", "like", "deleted_%")
+        .not("name", "like", "[GUDANG] %")
+        .order("name");
       return (data ?? []) as Product[];
     },
   });
   const { data: stockCosts = [] } = useQuery({
     queryKey: ["latest_stock_costs"],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 15 * 60 * 1000,
     queryFn: async () =>
       (
         await supabase
           .from("stock_movements")
           .select("product_id,initial_price,created_at")
           .order("created_at", { ascending: false })
+          .limit(200)
       ).data ?? [],
   });
   const { data: settings } = useQuery({
@@ -351,7 +357,20 @@ function TransactionPage() {
       setPartnerName("");
       setHouseBlock("");
       setDiscountValue("");
-      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.setQueryData<Product[]>(["products"], (old) => {
+        if (!old) return old;
+        const soldMap = new Map<string, number>();
+        items.forEach((it) => {
+          if (it.product_id) {
+            soldMap.set(it.product_id, (soldMap.get(it.product_id) || 0) + Number(it.quantity));
+          }
+        });
+        return old.map((p) =>
+          soldMap.has(p.id)
+            ? { ...p, stock: Math.max(0, Number(p.stock) - (soldMap.get(p.id) || 0)) }
+            : p
+        );
+      });
       toast.success("Transaksi berhasil");
     },
     onError: (e: Error) => toast.error(e.message),

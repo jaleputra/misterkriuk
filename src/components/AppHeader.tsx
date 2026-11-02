@@ -1,7 +1,7 @@
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { signOutUser } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 
 export function AppHeader({
   title,
@@ -14,10 +14,12 @@ export function AppHeader({
   email?: string;
   branchName?: string | null;
 }) {
-  const navigate = useNavigate();
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    await signOutUser();
   };
 
   const isCashier = role === "cashier";
@@ -64,9 +66,11 @@ export function AppHeader({
           </div>
 
           <Button
+            type="button"
             variant="ghost"
             size="icon"
-            onClick={signOut}
+            onClick={handleSignOut}
+            disabled={signingOut}
             title="Keluar"
             aria-label="Logout"
             className="shrink-0 h-8 w-8 sm:h-9 sm:w-9 rounded-lg hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"

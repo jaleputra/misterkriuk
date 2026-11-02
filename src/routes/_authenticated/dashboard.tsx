@@ -265,29 +265,45 @@ function Dashboard() {
         return q;
       });
 
-      const [stockEntries, products, stockMovements, allRestockEntries] = await Promise.all([
+      const [stockEntries, products, allRestockEntries] = await Promise.all([
         fetchAllRows<any>((from, to) => {
           let q = supabase.from("stock_entries").select("id, branch_name, restock_date, shipping_cost, entry_type, payment_method, created_at, created_by").gte("restock_date", sinceDateStr).range(from, to);
           if (untilDateStr) q = q.lte("restock_date", untilDateStr);
           return q;
         }),
         fetchAllRows<any>((from, to) => supabase.from("products").select("id, name, price, stock, category").range(from, to)),
-        fetchAllRows<any>((from, to) => supabase.from("stock_movements").select("id, product_id, quantity, initial_price, shipping_cost, created_at, products(name)").range(from, to)),
         fetchAllRows<any>((from, to) =>
           supabase
             .from("stock_entries")
-            .select("id, restock_date, shipping_cost, entry_type, payment_method, stock_movements(quantity, initial_price)")
+            .select("id, branch_name, restock_date, shipping_cost, entry_type, payment_method, created_by, stock_movements(quantity, initial_price)")
             .eq("entry_type", "restock")
             .range(from, to),
         ),
       ]);
 
+      const entryIds = stockEntries.map((e) => e.id).filter(Boolean);
       const txIds = txs.map((t) => t.id);
-      const itemsData = txIds.length
-        ? await fetchAllByIds<any>(txIds, (chunk, from, to) =>
-            supabase.from("transaction_items").select("id, transaction_id, product_id, product_name, price, cost_price, quantity, subtotal").in("transaction_id", chunk).range(from, to),
-          )
-        : [];
+
+      const [stockMovements, itemsData] = await Promise.all([
+        entryIds.length
+          ? fetchAllByIds<any>(entryIds, (chunk, from, to) =>
+              supabase
+                .from("stock_movements")
+                .select("id, stock_entry_id, product_id, quantity, initial_price, shipping_cost, created_at, products(name)")
+                .in("stock_entry_id", chunk)
+                .range(from, to),
+            )
+          : Promise.resolve([]),
+        txIds.length
+          ? fetchAllByIds<any>(txIds, (chunk, from, to) =>
+              supabase
+                .from("transaction_items")
+                .select("id, transaction_id, product_id, product_name, price, cost_price, quantity, subtotal")
+                .in("transaction_id", chunk)
+                .range(from, to),
+            )
+          : Promise.resolve([]),
+      ]);
 
       return {
         transactions: txs ?? [],

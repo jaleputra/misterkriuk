@@ -75,6 +75,36 @@ function AuthPage() {
       });
       if (error) {
         const msg = (error.message || "").toLowerCase();
+        // Otomatis migrasikan/daftarkan akun di database baru jika belum terdaftar
+        if (msg.includes("invalid login credentials") && password.length >= 6) {
+          const defaultName = cleanEmail.toLowerCase() === "jaleputra69@gmail.com"
+            ? "Admin"
+            : cleanEmail.split("@")[0];
+          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password,
+            options: {
+              emailRedirectTo: window.location.origin,
+              data: { name: defaultName },
+            },
+          });
+          if (!signUpErr && signUpData?.session?.user) {
+            toast.success("Login berhasil! Membuka aplikasi...");
+            handleLoginSuccess(signUpData.session.user);
+            return;
+          }
+          if (!signUpErr && signUpData?.user) {
+            const { data: retrySignIn } = await supabase.auth.signInWithPassword({
+              email: cleanEmail,
+              password,
+            });
+            if (retrySignIn?.session?.user) {
+              toast.success("Login berhasil! Membuka aplikasi...");
+              handleLoginSuccess(retrySignIn.session.user);
+              return;
+            }
+          }
+        }
         let displayError = error.message;
         if (msg.includes("invalid login credentials")) {
           displayError = "Email atau password salah. Jika belum terdaftar, silakan buat akun di tab 'Daftar'.";

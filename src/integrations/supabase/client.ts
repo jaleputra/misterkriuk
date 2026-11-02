@@ -2,22 +2,47 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
+const ACTIVE_SUPABASE_URL = "https://hcjtiijgqaadozpjecqg.supabase.co";
+const ACTIVE_SUPABASE_KEY = "sb_publishable_hmAxiUEeqdLmYvnMjqH8Vw_ACazQRXU";
+
+function isDeprecatedProject(val?: string) {
+  if (!val) return true;
+  return (
+    val.includes("jnafsytrumohxorczthe") ||
+    val.includes("brfzevaxwddynodtuasw") ||
+    val.includes("nybwaeovzsporldpllza") ||
+    val.includes("6si-mxmBj0LKfM0mPHubHA") ||
+    val.includes("SH3349e6Fh6luxfwI4b3JA")
+  );
+}
+
 function createSupabaseClient() {
-  // Use import.meta.env for client-side (Vite build-time replacement)
-  // Fall back to process.env for SSR (server-side rendering)
-  const SUPABASE_URL = 
-    import.meta.env.VITE_SUPABASE_URL || 
-    import.meta.env.NEXT_PUBLIC_SUPABASE_URL || 
-    process.env.VITE_SUPABASE_URL || 
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 
+  const envUrl =
+    import.meta.env.VITE_SUPABASE_URL ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.SUPABASE_URL;
 
-  const SUPABASE_PUBLISHABLE_KEY = 
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 
-    import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY || 
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
+  const envKey =
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.SUPABASE_PUBLISHABLE_KEY;
+
+  const SUPABASE_URL = !isDeprecatedProject(envUrl) ? envUrl! : ACTIVE_SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = !isDeprecatedProject(envKey) ? envKey! : ACTIVE_SUPABASE_KEY;
+
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem("sb-jnafsytrumohxorczthe-auth-token");
+      localStorage.removeItem("sb-brfzevaxwddynodtuasw-auth-token");
+      localStorage.removeItem("sb-nybwaeovzsporldpllza-auth-token");
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     const missing = [

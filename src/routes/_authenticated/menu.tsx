@@ -20,8 +20,16 @@ function MenuPage() {
   const qc = useQueryClient();
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => (await supabase.from("products").select("*").order("name")).data ?? [],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () =>
+      (
+        await supabase
+          .from("products")
+          .select("*")
+          .not("category", "like", "deleted_%")
+          .not("name", "like", "[GUDANG] %")
+          .order("name")
+      ).data ?? [],
   });
 
   const visibleProducts = products.filter(
@@ -57,7 +65,7 @@ function MenuPage() {
       };
       reader.onerror = reject;
       img.onload = () => {
-        const max = 500;
+        const max = 240;
         const ratio = Math.min(1, max / Math.max(img.width, img.height));
         const w = Math.round(img.width * ratio);
         const h = Math.round(img.height * ratio);
@@ -66,7 +74,7 @@ function MenuPage() {
         canvas.height = h;
         const ctx = canvas.getContext("2d")!;
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", 0.82));
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
       };
       img.onerror = reject;
       reader.readAsDataURL(file);

@@ -72,10 +72,14 @@ function AuthedLayout() {
   // Route protection effect using router navigation
   useEffect(() => {
     if (loading) return;
+    if (!user) {
+      window.location.replace("/auth");
+      return;
+    }
     if (effectiveRole === "cashier" && !isAllowed) {
       navigate({ to: "/transaction", replace: true });
     }
-  }, [effectiveRole, pathname, isAllowed, loading, navigate]);
+  }, [user, effectiveRole, pathname, isAllowed, loading, navigate]);
 
   if (loading) {
     return (
